@@ -329,14 +329,6 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
                 unsafe_allow_html=True,
             )
 
-    # ── CO2 배출량 비교 ──
-    if rail_available:
-        st.divider()
-        st.caption("CO2 배출량 비교 (kg)")
-        st.bar_chart({
-            "CO2(kg)": {"트럭 단독": truck_emission["gwp_kg_co2e"], "철도 통합운송": im.total_gwp_kg_co2e}
-        })
-
     # ── 이동경로 지도 ──
     st.divider()
     st.subheader("🗺️ 이동경로")
