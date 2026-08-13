@@ -12,13 +12,22 @@ import streamlit as st
 
 st.set_page_config(page_title="RailLTL", page_icon="🚆", layout="wide")
 
-pages = [
-    st.Page("pages/page0_home.py", title="화주 견적 비교", icon="🚚", default=True),
-    st.Page("pages/page1_shipper_tracking.py", title="화주용 실시간추적", icon="📦"),
-    st.Page("pages/page2_driver_app.py", title="트럭기사 대시보드", icon="🚛"),
-    st.Page("pages/page3_control_tower.py", title="관제센터", icon="🛰️"),
-    st.Page("pages/page4_car_assignment.py", title="화차 배치 추천", icon="🚃"),
-]
+pages = {
+    "화주용": [
+        st.Page("pages/page0_home.py", title="견적 비교", icon="🚚", default=True),
+        st.Page("pages/page1_shipper_tracking.py", title="실시간추적", icon="📦"),
+    ],
+    "트럭기사용": [
+        st.Page("pages/page2_driver_app.py", title="기사 대시보드", icon="🚛"),
+    ],
+    "코레일용": [
+        st.Page("pages/page3_control_tower.py", title="관제센터", icon="🛰️"),
+        st.Page("pages/page4_car_assignment.py", title="화차 배치 추천", icon="🚃"),
+    ],
+    "기타": [
+        st.Page("pages/page9_debug_weather.py", title="(임시) 날씨 디버그", icon="🔧"),  # TODO: 확인 끝나면 이 줄과 파일 삭제
+    ],
+}
 
 nav = st.navigation(pages)
 nav.run()
