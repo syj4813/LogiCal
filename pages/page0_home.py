@@ -365,6 +365,7 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
                 막판마일시작시각=im.station_release_dt,
                 첫마일거리km=im.first_mile_km,
                 막판마일거리km=im.last_mile_km,
+                철도구간거리km=im.rail_km,
                 # ── 화차 배치 추천용(4단계) — 폼에서 직접 안 받은 값이라 근사/기본값 ──
                 화물중량kg=weight_ton * 1000,
                 화물길이cm=None,
@@ -385,3 +386,80 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
             )
     elif st.session_state.get("show_comparison"):
         st.caption("※ 철도 통합운송이 가능한 건에 한해 예약 확정 및 실시간 추적을 제공합니다.")
+
+# ── AI 상담 챗봇 ──────────────────────────────────────────────
+# ⚠️ 견적 비교 폼과 별개 섹션이라, 조건문(rail_available 등) 바깥의
+# 최상위 레벨에 둔다. 견적을 아직 조회하지 않은 상태에서도 챗봇 자체는
+# 열 수 있게(그럴 땐 "먼저 견적을 조회해달라"고 안내).
+st.divider()
+st.markdown("#### 💬 AI 상담 챗봇")
+st.caption("견적 결과에 대해 궁금한 점을 물어보세요. (예: \"철도가 왜 더 저렴해?\", \"위험물이면 요금이 어떻게 바뀌어?\")")
+
+if not gemini_assist.GEMINI_API_KEY:
+    st.info("Gemini API 키가 설정되지 않아 챗봇을 사용할 수 없습니다. secrets.toml에 GEMINI_API_KEY를 등록해주세요.")
+else:
+    # 현재 화면에 표시된 견적 결과를 챗봇 컨텍스트로 넘긴다 — 챗봇이
+    # 숫자를 새로 만들어내지 않고 이미 계산된 값 안에서만 답하게 하기 위함.
+    have_quote = st.session_state.get("show_comparison") and "result" in st.session_state
+    chat_context = None
+    if have_quote:
+        chat_context = {
+            "화물종류": cargo_text,
+            "화물종류_분류": category.value,
+            "중량_kg": weight_kg,
+            "트럭단독_요금_원": truck_fare,
+            "트럭단독_거리_km": direct["distance_km"],
+            "트럭단독_소요시간_분": direct["duration_min"],
+            "트럭단독_CO2_kg": truck_emission["gwp_kg_co2e"],
+            "철도통합운송_가능여부": rail_available,
+        }
+        if rail_available:
+            chat_context.update({
+                "철도통합운송_요금_원": im.total_fare_won,
+                "철도통합운송_소요시간_분": im.total_duration_min,
+                "철도통합운송_도착예정": im.arrival_dt.strftime("%Y-%m-%d %H:%M"),
+                "철도통합운송_CO2_kg": im.total_gwp_kg_co2e,
+                "출발화물역": im.origin_node_name,
+                "도착화물역": im.dest_node_name,
+            })
+        else:
+            chat_context["철도이용불가사유"] = consolidation.reason
+
+    # 새로운 견적을 조회하면(폼 재제출로 result가 바뀌면) 챗봇도 최신
+    # 컨텍스트로 다시 시작한다 — 이전 견적 얘기가 섞여 헷갈리지 않도록.
+    current_result_key = id(st.session_state.get("result"))
+    if (
+        "chat_session" not in st.session_state
+        or st.session_state.get("chat_context_key") != current_result_key
+    ):
+        try:
+            st.session_state["chat_session"] = gemini_assist.start_chat(chat_context)
+            st.session_state["chat_context_key"] = current_result_key
+            st.session_state["chat_history"] = []
+            st.session_state["chat_error"] = None
+        except Exception as e:
+            st.session_state["chat_session"] = None
+            st.session_state["chat_error"] = str(e)
+
+    if st.session_state.get("chat_error"):
+        st.error(f"챗봇 세션을 시작하지 못했습니다: {st.session_state['chat_error']}")
+    else:
+        for role, text in st.session_state.get("chat_history", []):
+            with st.chat_message(role):
+                st.write(text)
+
+        user_msg = st.chat_input("질문을 입력하세요")
+        if user_msg:
+            st.session_state["chat_history"].append(("user", user_msg))
+            with st.chat_message("user"):
+                st.write(user_msg)
+            with st.chat_message("assistant"):
+                with st.spinner("답변 작성 중..."):
+                    try:
+                        reply = gemini_assist.send_chat_message(
+                            st.session_state["chat_session"], user_msg
+                        )
+                    except Exception as e:
+                        reply = f"답변 생성 중 오류가 발생했습니다: {e}"
+                st.write(reply)
+            st.session_state["chat_history"].append(("assistant", reply))
