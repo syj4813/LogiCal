@@ -92,7 +92,9 @@ t_start = record.get("희망출발시각")
 @st.cache_data(show_spinner=False)
 def _cached_delay_risk(shipment_id: str, distance_km: float, weight_ton: float,
                         departure_dt, consolidated: bool, direction: str,
-                        origin_node: str, dest_node: str) -> dict:
+                        origin_node: str, dest_node: str,
+                        passenger_incident: bool, weather_advisory: bool,
+                        track_maintenance: bool) -> dict:
     return delay_risk.predict_delay_risk(
         origin_node_name=origin_node,
         dest_node_name=dest_node,
@@ -101,20 +103,43 @@ def _cached_delay_risk(shipment_id: str, distance_km: float, weight_ton: float,
         departure_dt=departure_dt,
         consolidated=consolidated,
         direction=direction,
+        passenger_incident=passenger_incident,
+        weather_advisory=weather_advisory,
+        track_maintenance=track_maintenance,
     )
 
 
 rail_km = record.get("철도구간거리km")
 if rail_km is not None and t_start is not None:
+    # ── 정성적 수동 보정 입력 ────────────────────────────────
+    # 여객사고/기상특보/선로공사는 실시간 자동 감지가 안 되므로, 오늘
+    # 그런 상황을 아는 사람(관제사·화주)이 직접 체크하게 한다. 체크된
+    # 항목은 delay_risk.QUALITATIVE_ADJUSTMENT의 가산치만큼 확률에
+    # 반영된다 — 학습된 게 아니라 규칙 기반 보정이라는 걸 아래에 명시.
+    st.markdown("**🚧 오늘 알고 계신 정성적 리스크가 있나요? (수동 입력)**")
+    oc1, oc2, oc3 = st.columns(3)
+    with oc1:
+        passenger_incident = st.checkbox("🚈 여객열차 사고/지연 있음", key=f"pi_{selected_id}")
+    with oc2:
+        weather_advisory = st.checkbox("🌧️ 기상특보(호우·폭설 등) 발효중", key=f"wa_{selected_id}")
+    with oc3:
+        track_maintenance = st.checkbox("🚧 해당 구간 선로 보수공사중", key=f"tm_{selected_id}")
+
     result = _cached_delay_risk(
         record["화물ID"], rail_km, record.get("중량톤", 0.0), t_start,
         bool(record.get("결합화주ID목록")), _direction,
         record.get("출발화물역", ""), record.get("도착화물역", ""),
+        passenger_incident, weather_advisory, track_maintenance,
     )
     risk_icon = {"낮음": "🟢", "보통": "🟡", "높음": "🔴"}.get(result["level"], "⚪")
     rc1, rc2 = st.columns([1, 2])
     with rc1:
         st.metric("예측 지연위험 확률", f"{result['probability']*100:.1f}%", result["level"])
+        if result["qualitative_overrides"]["적용_가산치_합"] > 0:
+            st.caption(
+                f"모델 예측 {result['model_probability']*100:.1f}% + 수동 보정 "
+                f"{result['qualitative_overrides']['적용_가산치_합']*100:.0f}%p"
+            )
     with rc2:
         st.markdown("**🤖 AI 설명 — 이렇게 예측된 요인**")
         try:
@@ -122,6 +147,59 @@ if rail_km is not None and t_start is not None:
             st.info(f"{risk_icon} {reason}")
         except Exception:
             st.info(f"{risk_icon} **{result['level']}** (Gemini 설명 생성 실패 — API 키 확인 필요, 확률 수치 자체는 로컬 모델 결과입니다)")
+
+    # ── 정성적 위험 요인 breakdown ──────────────────────────
+    # 위 AI 문장 한 줄만으로는 모델이 실제로 어떤 신호를 봤는지 잘 안
+    # 드러나서, signals 딕셔너리를 사람이 읽을 수 있게 그대로 펼쳐서
+    # 보여준다. 이건 모델 입력값을 나열하는 것뿐이라 AI가 관여하지
+    # 않고, 지어낼 수 있는 여지도 없다.
+    st.markdown("**📋 정성적 위험 요인 (모델이 실제로 사용한 신호)**")
+    signals = result["signals"]
+    _WEEKDAY_RATE = {"월": 17.1, "화": 17.7, "수": 16.6, "목": 15.9, "금": 15.7, "토": 24.3, "일": 28.8}
+    qf1, qf2, qf3 = st.columns(3)
+    with qf1:
+        wd = signals["요일"]
+        st.write(f"📅 **요일**: {wd}요일 (실측 운휴율 {_WEEKDAY_RATE.get(wd, '-')}%)")
+        st.write(f"🛤️ **노선**: {signals['주운행선']}")
+        st.write(f"⏰ **출발시간대**: {signals['출발시간대']}")
+    with qf2:
+        st.write(f"🌧️ **장마철(6~8월)**: {'해당' if signals['장마철여부'] else '비해당'}")
+        st.write(f"❄️ **동절기(12~2월)**: {'해당' if signals['동절기여부'] else '비해당'}")
+        st.write(f"🔗 **결합배송**: {'예' if signals['결합배송여부'] else '아니오'}")
+    with qf3:
+        st.write(
+            f"🚛 **공차회송**: {'예' if signals['공차회송여부'] else '아니오 (이 앱은 항상 아니오로 간주)'}"
+        )
+        st.write(f"📦 **화물중량**: {signals['화물중량_톤']}톤")
+        st.write(f"📏 **운행거리**: {signals['운행거리_km']}km")
+
+    overrides = result["qualitative_overrides"]
+    checked = [k for k in ("passenger_incident", "weather_advisory", "track_maintenance") if overrides[k]]
+    if checked:
+        _LABEL = {
+            "passenger_incident": "여객열차 사고/지연",
+            "weather_advisory": "기상특보",
+            "track_maintenance": "선로 보수공사",
+        }
+        st.caption(
+            "✅ 수동 체크 반영됨: " + ", ".join(_LABEL[k] for k in checked)
+            + f" (가산치 합 +{overrides['적용_가산치_합']*100:.0f}%p — 학습된 계수 아닌 잠정 추정치)"
+        )
+
+    with st.expander("⚠️ 아직 자동으로 감지하지 못하는 정성적 리스크"):
+        st.markdown(
+            "위 체크박스로 사람이 직접 알려주면 반영되지만(규칙 기반 가산치, "
+            "학습된 계수 아님), 아직 실시간으로 자동 감지하지는 못합니다 — "
+            "지어내지 않고 한계로 명시합니다.\n\n"
+            "- **여객열차 사고/지연**, **기상특보**, **선로 보수공사**: 위에서 "
+            "수동 체크는 가능하나, 코레일 관제 시스템·기상청 API 등과 실시간 "
+            "연동되면 자동으로 감지·반영할 수 있습니다.\n"
+            "- **명절·연휴 물동량 급증**: 요일 패턴과 별개로 특정 날짜에 몰리는 "
+            "변동 — 아직 체크박스도 없음, 달력 기반 규칙 추가 필요.\n\n"
+            "가산치(+15%p/+10%p/+8%p)는 실제 지연 발생률로 보정된 값이 아니라 "
+            "잠정 추정치입니다(delay_risk.QUALITATIVE_ADJUSTMENT). 실제 사례가 "
+            "쌓이면 이 숫자부터 교체해야 합니다."
+        )
 else:
     st.caption("지연위험도를 계산할 철도 구간 정보가 부족합니다.")
 
