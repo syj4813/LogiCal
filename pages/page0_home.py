@@ -85,7 +85,7 @@ st.markdown(
     .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
     .fx-brand {
         text-align: center; margin-bottom: 8px;
-        font-size: 1.5rem; font-weight: 800; color: #0F6E4F; letter-spacing: 0.5px;
+        font-size: 2.5rem; font-weight: 800; color: #0F6E4F; letter-spacing: 0.5px;
     }
     </style>
     """,
