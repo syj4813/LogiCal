@@ -81,6 +81,8 @@ st.markdown(
         padding: 26px 28px;
         margin-bottom: 22px;
     }
+    .fx-hero h2 { margin: 0; color: white; }
+    .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -89,8 +91,8 @@ st.markdown(
 st.markdown(
     """
     <div class="fx-hero">
-      <div style="font-size:1.5rem; font-weight:700;">🚆 RailLTL</div>
-      <div style="opacity:0.9; margin-top:4px;">AI 기반 소량 화물(LTL) 철도 결합 운송 및 통합 관제 플랫폼</div>
+      <h2>🚆 RailLTL</h2>
+      <p>AI 기반 소량 화물(LTL) 철도 결합 운송 및 통합 관제 플랫폼</p>
     </div>
     """,
     unsafe_allow_html=True,
