@@ -12,7 +12,8 @@ import streamlit as st
 import gemini_assist
 import geocode
 import road_cost
-from cargo import classify_cargo_type, apply_surcharge, is_mode_restricted
+import shared_store
+from cargo import CargoCategory, classify_cargo_type, apply_surcharge, is_mode_restricted, is_liquid_or_gas_hazmat
 from consolidation import ShipperOrder, evaluate_consolidation
 from data.mock_pool import get_mock_pool
 from emission import (
@@ -22,7 +23,7 @@ from emission import (
 )
 from intermodal import estimate_intermodal
 from rail_freight_nodes import MIN_SHIPMENT_TON_FOR_RAIL
-from tz_utils import today_kst
+from tz_utils import today_kst, now_kst_naive
 
 # ── 외부 API 키 주입 (레포에 하드코딩하지 않고 Streamlit secrets에서만 읽음) ──
 # ⚠️ secrets.toml 파일 자체가 없으면 st.secrets.get()이 조용히 기본값을
@@ -214,6 +215,7 @@ if submitted:
         dest_lat=dest_lat, dest_lng=dest_lng,
         weight_ton=weight_ton, category=category,
         departure_dt=departure_dt, cargo_text=cargo_text,
+        origin_addr=origin_addr, dest_addr=dest_addr,
     )
 
 if st.session_state.get("show_comparison") and "result" in st.session_state:
@@ -322,3 +324,64 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
         with cc2:
             st.caption("CO2 배출량 비교 (kg)")
             st.bar_chart({"CO2(kg)": dict(zip(chart_data["수단"], chart_data["CO2(kg)"]))})
+
+    # ── 예약 확정 → 공유 저장소 기록 ──────────────────────────
+    # 실시간 Door-to-Door 추적·트럭기사 앱·관제센터 연계는 "철도 통합운송"
+    # 예약 건에 한정한다. 트럭 단독은 화물역(CY) 환적 구간 자체가 없어
+    # 후단 화면들의 데이터 모델과 맞지 않는다.
+    #
+    # ⚠️ 이 블록은 st.session_state["show_comparison"]로 이미 게이팅된
+    # 영역 안에 있다 — "예약 확정" 버튼을 눌러도 화면 전체가 사라지지
+    # 않고 비교 결과가 계속 보이는 이유. (예전 버전에서 `if submitted:`를
+    # 직접 조건으로 써서, 그 안의 버튼을 누르면 재실행 시 submitted가
+    # 다시 False가 돼 블록 전체가 사라지던 버그가 있었음 — session_state
+    # 플래그 패턴으로 처음부터 피해감.)
+    if rail_available:
+        st.divider()
+        st.subheader("예약 확정")
+        if st.button("✅ 예약 확정 (Door-to-Door 추적 시작)", type="primary"):
+            gwp_savings = truck_emission["gwp_kg_co2e"] - im.total_gwp_kg_co2e
+            shipment_id = shared_store.add_shipment(
+                화물종류=r["cargo_text"],
+                출발지주소=r["origin_addr"],
+                도착지주소=r["dest_addr"],
+                출발화물역=im.origin_node_name,
+                도착화물역=im.dest_node_name,
+                중량톤=weight_ton,
+                예약시각=now_kst_naive(),
+                희망출발시각=departure_dt,
+                도착예정시각=im.arrival_dt,
+                요금원=im.total_fare_won,
+                **{
+                    "GWP(kgCO2eq)": im.total_gwp_kg_co2e,
+                    "GWP절감(kgCO2eq대비트럭)": gwp_savings,
+                },
+                결합화주ID목록=consolidation.grouped_order_ids,
+                열차번호=im.train_no,
+                시각표출처=im.schedule_source,
+                첫마일완료시각=im.station_ready_dt,
+                철도출발시각=im.rail_departure_dt,
+                철도도착시각=im.rail_arrival_dt,
+                막판마일시작시각=im.station_release_dt,
+                첫마일거리km=im.first_mile_km,
+                막판마일거리km=im.last_mile_km,
+                # ── 화차 배치 추천용(4단계) — 폼에서 직접 안 받은 값이라 근사/기본값 ──
+                화물중량kg=weight_ton * 1000,
+                화물길이cm=None,
+                화물폭cm=None,
+                화물높이cm=None,
+                위험물여부=(category == CargoCategory.HAZARDOUS),
+                액체기체위험물여부=(
+                    category == CargoCategory.HAZARDOUS
+                    and is_liquid_or_gas_hazmat(r["cargo_text"])
+                ),
+                파손주의여부=(category == CargoCategory.FRAGILE_HIGH_VALUE),
+                화차배정=None,
+            )
+            st.session_state["last_shipment_id"] = shipment_id
+            st.success(
+                f"예약이 확정되었습니다. 화물ID **{shipment_id}** — "
+                "왼쪽 메뉴의 '화주용 실시간추적'에서 진행 상황을 확인하세요."
+            )
+    elif st.session_state.get("show_comparison"):
+        st.caption("※ 철도 통합운송이 가능한 건에 한해 예약 확정 및 실시간 추적을 제공합니다.")
