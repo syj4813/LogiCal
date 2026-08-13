@@ -25,17 +25,17 @@ with st.sidebar:
     st.divider()
 
 pages = {
-    "화주용": [
-        st.Page("pages/page0_home.py", title="견적 비교", icon="🚚", default=True),
-        st.Page("pages/page1_shipper_tracking.py", title="실시간추적", icon="📦"),
+    "화주": [
+        st.Page("pages/page0_home.py", title="견적 생성", icon="🚚", default=True),
+        st.Page("pages/page1_shipper_tracking.py", title="실시간 추적", icon="📦"),
     ],
-    "트럭기사용": [
-        st.Page("pages/page2_driver_app.py", title="기사 대시보드", icon="🚛"),
+    "트럭기사": [
+        st.Page("pages/page2_driver_app.py", title="화물 매칭", icon="🚛"),
     ],
-    "코레일용": [
+    "코레일": [
         st.Page("pages/page3_control_tower.py", title="관제센터", icon="🛰️"),
-        st.Page("pages/page4_car_assignment.py", title="화차 배치 추천", icon="🚃"),
-    ]
+        st.Page("pages/page4_car_assignment.py", title="화차 배치", icon="🚃"),
+    ],
 }
 
 nav = st.navigation(pages)
