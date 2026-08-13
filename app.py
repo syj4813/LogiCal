@@ -15,6 +15,7 @@ st.set_page_config(page_title="RailLTL", page_icon="🚆", layout="wide")
 pages = [
     st.Page("pages/page0_home.py", title="화주 견적 비교", icon="🚚", default=True),
     st.Page("pages/page1_shipper_tracking.py", title="화주용 실시간추적", icon="📦"),
+    st.Page("pages/page4_car_assignment.py", title="화차 배치 추천", icon="🚃"),
 ]
 
 nav = st.navigation(pages)
