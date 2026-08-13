@@ -2,4 +2,5 @@ streamlit>=1.36
 requests
 google-genai
 lightgbm
+numpy
 pandas>=2.0
