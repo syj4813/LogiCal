@@ -44,15 +44,20 @@ st.markdown(
     }
     .fx-hero h2 { margin: 0; color: white; }
     .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
+    .fx-brand {
+        text-align: center; margin-bottom: 8px;
+        font-size: 1.05rem; font-weight: 800; color: #0F6E4F; letter-spacing: 0.5px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+st.markdown('<div class="fx-brand">🚆 RailLTL</div>', unsafe_allow_html=True)
 st.markdown(
     """
     <div class="fx-hero">
-      <h2>🚛 트럭기사 대시보드</h2>
+      <h2>🚛 화물 매칭</h2>
       <p>오늘의 배차 · 도착 예정 화물 · 복귀 화물 매칭 · 예상 수익</p>
     </div>
     """,
