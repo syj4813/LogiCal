@@ -196,20 +196,38 @@ def explain_match(score: float, factors: dict) -> str:
 
 def explain_delay_risk(probability: float, level: str, signals: dict) -> str:
     """delay_risk.py가 계산한 실제 지연위험 확률(LightGBM)을 화주에게 보여줄
-    한 문장으로 설명.
+    한두 문장으로, 어떤 요인이 그 예측에 영향을 줬는지 설명.
 
     ⚠️ 확률/등급 자체는 이미 delay_risk.py의 학습된 모델이 계산한 값이고,
     Gemini는 그 수치와 근거 신호(요일/품목/결합배송여부 등)를 문장으로
     풀어 설명하는 역할만 한다 — 다른 숫자를 새로 만들어내지 않는다
     (계산은 코드/모델, 설명은 AI 원칙, explain_carbon_savings와 동일).
+
+    "어떤 요인 때문인지"를 그럴듯하게 지어내지 않도록, 학습 시 실제로
+    확인된 피처 중요도 순위(data/README_delay_risk.md 근거)와 실측
+    요일별 운휴율 통계를 프롬프트에 같이 줘서, 그 안에서만 요인을
+    짚게 한다.
     """
+    feature_importance_note = (
+        "학습 시 확인된 피처 중요도 순위(1위가 가장 영향 큼): "
+        "1위 공차회송여부, 2위 운행거리, 3위 화물중량, 4위 요일, 5위 수송품목."
+    )
+    weekday_base_rate_note = (
+        "실측 요일별 운휴율(2024년 7월 기준): 월 17.1%, 화 17.7%, 수 16.6%, "
+        "목 15.9%, 금 15.7%, 토 24.3%, 일 28.8% — 주말일수록 기준 위험이 높음."
+    )
     prompt = f"""아래는 화물열차 지연(운휴) 위험도를 학습된 모델이 예측한
-결과입니다. 화주에게 보여줄 한두 문장을 존댓말로 작성하세요. 주어진
-숫자와 신호 외의 다른 수치·원인을 새로 만들어내지 마세요.
+결과입니다. 화주에게 "왜 이 확률이 나왔는지" 요인 중심으로 한두 문장을
+존댓말로 작성하세요. 주어진 숫자·신호·통계 외의 다른 수치·원인을 새로
+만들어내지 마세요. 아래 피처 중요도 순위를 참고해서, 근거 신호 중 실제로
+중요도가 높은 항목(예: 요일, 결합배송여부)을 우선 언급하세요.
+
+{feature_importance_note}
+{weekday_base_rate_note}
 
 지연위험 확률: {probability * 100:.1f}%
 위험 등급: {level}
-근거 신호: {json.dumps(signals, ensure_ascii=False)}
+이 화물의 근거 신호: {json.dumps(signals, ensure_ascii=False)}
 
 문장만 출력하세요."""
     return _call_gemini(prompt)
