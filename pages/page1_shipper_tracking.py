@@ -100,10 +100,6 @@ c4.metric("현재 단계", f"{stage_idx + 1}/{len(shared_store.STAGE_LABELS)}", 
 
 st.divider()
 st.subheader("🤖 AI 지연위험도")
-st.caption(
-    "⚠️ 과거 운행 통계를 바탕으로 AI가 계산한 참고용 예측이며, 실제 지연 여부와는 "
-    "다를 수 있습니다. 확정된 정보가 아니라 배송 계획을 세우실 때 참고하시라는 취지예요."
-)
 
 _NODE_COORDS = {n.name: (n.lat, n.lng) for n in FREIGHT_NODES}
 _origin_node_latlng = _NODE_COORDS.get(record.get("출발화물역"))
@@ -224,8 +220,3 @@ if gwp_savings is not None or mileage is not None:
         m1.metric("탄소 절감량 (트럭 대비)", f"{gwp_savings:.1f} kgCO2eq")
     if mileage is not None:
         m2.metric("🪙 이 화물로 적립된 탄소 마일리지", f"{mileage:,}P")
-
-st.caption(
-    "※ 현재 진행 단계는 실시간 위치 추적이 아니라, 열차 시간표(가능한 경우)나 "
-    "예상 소요시간을 바탕으로 자동 계산된 값입니다."
-)
