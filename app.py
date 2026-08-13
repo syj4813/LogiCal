@@ -10,7 +10,7 @@
 
 import streamlit as st
 
-st.set_page_config(page_title="철도 화물 통합운송 비교", page_icon="🚆", layout="wide")
+st.set_page_config(page_title="RailLTL", page_icon="🚆", layout="wide")
 
 pages = [
     st.Page("pages/page0_home.py", title="화주 견적 비교", icon="🚚", default=True),
