@@ -5,7 +5,7 @@
 비교만 다룬다 (퀵서비스·KTX특송은 소형화물 전용이라 이 비교에서 제외).
 """
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 import streamlit as st
 
@@ -111,6 +111,15 @@ def _safe_geocode(address: str):
         return None
 
 
+def _safe_formatted_address(text: str) -> str:
+    """지오코딩으로 정식 주소를 얻으면 그걸 쓰고, 실패하면 원본 텍스트 그대로."""
+    try:
+        formatted = geocode.geocode_to_formatted_address(text)
+    except Exception:
+        formatted = None
+    return formatted or text
+
+
 # ── 입력 폼 ──
 _defaults = {
     "f_origin": "서울특별시 중구 세종대로",
@@ -118,7 +127,7 @@ _defaults = {
     "f_cargo": "전자부품",
     "f_weight": 800.0,
     "f_date": today_kst(),
-    "f_time": time(9, 0),
+    "f_time": now_kst_naive().time(),
 }
 for k, v in _defaults.items():
     st.session_state.setdefault(k, v)
@@ -150,9 +159,9 @@ if st.button("✨ AI로 자동 입력"):
                 st.warning(parsed.get("clarification_message") or f"다음 항목을 더 알려주세요: {', '.join(parsed['missing_fields'])}")
             else:
                 if parsed.get("origin"):
-                    st.session_state["f_origin"] = parsed["origin"]
+                    st.session_state["f_origin"] = _safe_formatted_address(parsed["origin"])
                 if parsed.get("destination"):
-                    st.session_state["f_dest"] = parsed["destination"]
+                    st.session_state["f_dest"] = _safe_formatted_address(parsed["destination"])
                 if parsed.get("weight_kg"):
                     st.session_state["f_weight"] = float(parsed["weight_kg"])
                 if parsed.get("cargo_type"):
@@ -181,44 +190,27 @@ with st.form("quote_form"):
         desired_date = st.date_input("희망 출발일", key="f_date")
         desired_time = st.time_input("희망 출발시각", key="f_time")
 
-    with st.expander("주소 인식이 안 되면 좌표를 직접 입력하세요 (선택)"):
-        oc1, oc2 = st.columns(2)
-        with oc1:
-            override_origin = st.checkbox("출발지 좌표 직접 입력")
-            origin_lat_in = st.number_input("출발지 위도", value=37.5665, format="%.4f", disabled=not override_origin)
-            origin_lng_in = st.number_input("출발지 경도", value=126.9780, format="%.4f", disabled=not override_origin)
-        with oc2:
-            override_dest = st.checkbox("도착지 좌표 직접 입력")
-            dest_lat_in = st.number_input("도착지 위도", value=35.1796, format="%.4f", disabled=not override_dest)
-            dest_lng_in = st.number_input("도착지 경도", value=129.0756, format="%.4f", disabled=not override_dest)
-
     submitted = st.form_submit_button("비교하기", type="primary", width="stretch")
 
-if submitted:
-    st.session_state["show_comparison"] = True
 
-    if override_origin:
-        origin_lat, origin_lng = origin_lat_in, origin_lng_in
-    else:
-        geo = _safe_geocode(origin_addr)
-        if geo is None:
-            st.error("출발지 주소를 인식하지 못했습니다. 위 '좌표 직접 입력'에서 출발지 좌표를 입력해주세요.")
-            st.stop()
-        origin_lat, origin_lng = geo
+def _finalize_quote(origin_addr, dest_addr, cargo_text, weight_kg, departure_dt):
+    """지오코딩 + 결과 계산 → session_state["result"]에 저장 (정상 제출/과거시각 확인 두 경로 공용)."""
+    origin_geo = _safe_geocode(origin_addr)
+    if origin_geo is None:
+        st.error("출발지 주소를 인식하지 못했습니다. 주소를 다시 확인해주세요.")
+        st.stop()
+    origin_lat, origin_lng = origin_geo
 
-    if override_dest:
-        dest_lat, dest_lng = dest_lat_in, dest_lng_in
-    else:
-        geo = _safe_geocode(dest_addr)
-        if geo is None:
-            st.error("도착지 주소를 인식하지 못했습니다. 위 '좌표 직접 입력'에서 도착지 좌표를 입력해주세요.")
-            st.stop()
-        dest_lat, dest_lng = geo
+    dest_geo = _safe_geocode(dest_addr)
+    if dest_geo is None:
+        st.error("도착지 주소를 인식하지 못했습니다. 주소를 다시 확인해주세요.")
+        st.stop()
+    dest_lat, dest_lng = dest_geo
 
     weight_ton = weight_kg / 1000
     category = classify_cargo_type(cargo_text)
-    departure_dt = datetime.combine(desired_date, desired_time)
 
+    st.session_state["show_comparison"] = True
     st.session_state["result"] = dict(
         origin_lat=origin_lat, origin_lng=origin_lng,
         dest_lat=dest_lat, dest_lng=dest_lng,
@@ -226,6 +218,40 @@ if submitted:
         departure_dt=departure_dt, cargo_text=cargo_text,
         origin_addr=origin_addr, dest_addr=dest_addr,
     )
+
+
+if submitted:
+    departure_dt = datetime.combine(desired_date, desired_time)
+    # ⚠️ 기본값 자체가 "지금"이라, 폼을 작성하는 몇 분 사이에 아무것도 안
+    # 건드려도 이미 과거가 돼버릴 수 있다 — 5분 여유를 둬서 그 자연스러운
+    # 경우까지 경고가 뜨지 않게 한다. 진짜로 어제/몇 시간 전처럼 뚜렷하게
+    # 과거인 경우만 잡는다.
+    if departure_dt < now_kst_naive() - timedelta(minutes=5):
+        # 희망 출발시각이 과거면 바로 계산하지 않고 확인부터 받는다 —
+        # 확인/재입력 버튼은 폼 밖에서 눌리므로, 이 시점의 폼 입력값을
+        # session_state에 잠깐 담아뒀다가 확인되면 그걸로 계산을 이어간다.
+        st.session_state["pending_quote_inputs"] = dict(
+            origin_addr=origin_addr, dest_addr=dest_addr, cargo_text=cargo_text,
+            weight_kg=weight_kg, departure_dt=departure_dt,
+        )
+    else:
+        st.session_state.pop("pending_quote_inputs", None)
+        _finalize_quote(origin_addr, dest_addr, cargo_text, weight_kg, departure_dt)
+
+if st.session_state.get("pending_quote_inputs"):
+    p = st.session_state["pending_quote_inputs"]
+    st.warning(
+        f"⏰ 입력하신 희망 출발시각({p['departure_dt'].strftime('%Y-%m-%d %H:%M')})이 "
+        "현재 시간 이전입니다. 진행하시겠습니까?"
+    )
+    wc1, wc2 = st.columns(2)
+    if wc1.button("✅ 예, 그대로 진행합니다", type="primary"):
+        p = st.session_state.pop("pending_quote_inputs")
+        _finalize_quote(p["origin_addr"], p["dest_addr"], p["cargo_text"], p["weight_kg"], p["departure_dt"])
+        st.rerun()
+    if wc2.button("✏️ 시간을 다시 입력할게요"):
+        st.session_state.pop("pending_quote_inputs", None)
+        st.rerun()
 
 if st.session_state.get("show_comparison") and "result" in st.session_state:
     r = st.session_state["result"]
