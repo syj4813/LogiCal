@@ -81,7 +81,7 @@ st.markdown(
 st.markdown(
     """
     <div class="fx-hero">
-      <div style="font-size:1.5rem; font-weight:700;">🚆 소량 화물, 트럭보다 저렴하고 친환경적인 철도 통합운송으로</div>
+      <div style="font-size:1.5rem; font-weight:700;">🚆 RailLTL</div>
       <div style="opacity:0.9; margin-top:4px;">500kg 이상 화물 · 트럭 단독 vs 트럭+철도 통합운송(door-to-door) 실측 비교</div>
     </div>
     """,
