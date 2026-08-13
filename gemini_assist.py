@@ -194,7 +194,7 @@ def explain_match(score: float, factors: dict) -> str:
     return _call_gemini(prompt)
 
 
-def explain_delay_risk(probability: float, level: str, signals: dict) -> str:
+def explain_delay_risk(probability: float, level: str, signals: dict, weather_summary: str | None = None) -> str:
     """delay_risk.py가 계산한 실제 지연위험 확률(LightGBM)을 화주에게 보여줄
     한두 문장으로, 어떤 요인이 그 예측에 영향을 줬는지 설명.
 
@@ -207,6 +207,13 @@ def explain_delay_risk(probability: float, level: str, signals: dict) -> str:
     확인된 피처 중요도 순위(data/README_delay_risk.md 근거)와 실측
     요일별 운휴율 통계를 프롬프트에 같이 줘서, 그 안에서만 요인을
     짚게 한다.
+
+    weather_summary: 기상청 API(weather.py)로 조회한 출발 시점 예보 요약
+    문장(선택). ⚠️ 이 값은 delay_risk 모델의 입력 피처가 아니다 — 모델
+    확률 자체에는 날씨가 전혀 반영돼 있지 않다. 여기서는 순수하게 참고
+    정성 신호로만 프롬프트에 얹고, 최종 문장에서도 다른 정성 신호와
+    동일하게 숫자 없이(강수확률 %, 기온 등 전부 제거) 자연스럽게만
+    언급하게 한다. None이면 날씨 언급 없이 기존과 동일하게 동작한다.
     """
     feature_importance_note = (
         "학습 시 확인된 피처 중요도 순위(1위가 가장 영향 큼): "
@@ -216,6 +223,15 @@ def explain_delay_risk(probability: float, level: str, signals: dict) -> str:
         "실측 요일별 운휴율(2024년 7월 기준): 월 17.1%, 화 17.7%, 수 16.6%, "
         "목 15.9%, 금 15.7%, 토 24.3%, 일 28.8% — 주말일수록 기준 위험이 높음."
     )
+    weather_line = ""
+    weather_bullet = ""
+    if weather_summary:
+        weather_line = f"\n출발 시점 기상 참고 정보(내부 참고, 모델 계산에는 미반영): {weather_summary}"
+        weather_bullet = (
+            "\n  - 기상 참고 정보: 비/눈처럼 운송에 불리한 날씨면 자연스럽게 짧게 "
+            "언급(예: \"비 소식도 있어\"), 맑거나 무난하면 굳이 언급하지 않아도 됨. "
+            "기온·강수확률 등 구체적 수치는 여기서도 절대 쓰지 말 것."
+        )
     prompt = f"""아래는 화물열차 지연(운휴) 위험도를 학습된 모델이 예측한
 결과입니다. 화주에게 "왜 이런 위험 등급이 나왔는지" 요인 중심으로 설명하는
 문장을 존댓말로 작성하세요. 아래 숫자와 신호는 판단 근거로만 참고하고,
@@ -230,15 +246,15 @@ def explain_delay_risk(probability: float, level: str, signals: dict) -> str:
   - 결합배송 여부
   - 공차회송 여부
   - 화물중량: 실제 톤 수치를 쓰지 말고 "가벼운 편", "무거운 편"처럼 표현
-  - 운행거리: 실제 km 수치를 쓰지 말고 "짧은 편", "다소 긴 편"처럼 표현
+  - 운행거리: 실제 km 수치를 쓰지 말고 "짧은 편", "다소 긴 편"처럼 표현{weather_bullet}
 이 중 이번 건에 실제로 해당하거나 영향이 큰 항목(요일, 공차회송,
 운행거리, 화물중량)은 반드시 언급하세요. 해당하지 않는 계절 요인은
 억지로 언급하지 말고 자연스럽게 생략해도 됩니다.
 
 ⚠️ 숫자 표시 금지 규칙:
 - 최종 문장에는 0~9 숫자를 하나도 쓰지 마세요.
-- 지연위험 확률, 요일별 운휴율, 화물중량, 운행거리, 월 정보 등 모든
-  구체적인 수치는 문구에서 생략하세요.
+- 지연위험 확률, 요일별 운휴율, 화물중량, 운행거리, 월 정보, 기상 수치 등
+  모든 구체적인 수치는 문구에서 생략하세요.
 - 위험도는 "낮음", "보통", "높음" 등급만 말하고 확률을 괄호로 붙이지 마세요.
 - 숫자 대신 "낮은 편", "가벼운 편", "긴 편" 같은 정성 표현을 사용하세요.
 
@@ -253,16 +269,17 @@ def explain_delay_risk(probability: float, level: str, signals: dict) -> str:
 
 지연위험 확률(내부 참고): {probability * 100:.1f}%
 위험 등급: {level}
-이 화물의 근거 신호(내부 참고): {json.dumps(signals, ensure_ascii=False)}
+이 화물의 근거 신호(내부 참고): {json.dumps(signals, ensure_ascii=False)}{weather_line}
 
 숫자 없이 문장만 출력하세요."""
     reason = _call_gemini(prompt)
 
     # 프롬프트를 따르지 않고 Gemini가 숫자를 출력하는 경우를 대비한 안전장치.
     # 화주용 파란 설명 박스에는 구체적인 숫자가 노출되지 않도록 한다.
+    # (기상 정보의 강수확률/기온 수치가 새어나오는 경우도 이 정규식으로 같이 걸러진다.)
     import re
     reason = re.sub(r"\(?\s*\d+(?:\.\d+)?\s*%\s*\)?", "", reason)
-    reason = re.sub(r"\d+(?:\.\d+)?\s*(?:km|KM|킬로미터|톤|kg|KG|킬로그램)", "", reason)
+    reason = re.sub(r"\d+(?:\.\d+)?\s*(?:km|KM|킬로미터|톤|kg|KG|킬로그램|도|℃)", "", reason)
     reason = re.sub(r"\d+\s*월", "", reason)
     reason = re.sub(r"\d+(?:\.\d+)?", "", reason)
     reason = re.sub(r"\(\s*\)", "", reason)
