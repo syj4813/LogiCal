@@ -83,16 +83,21 @@ st.markdown(
     }
     .fx-hero h2 { margin: 0; color: white; }
     .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
+    .fx-brand {
+        text-align: center; margin-bottom: 8px;
+        font-size: 1.05rem; font-weight: 800; color: #0F6E4F; letter-spacing: 0.5px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+st.markdown('<div class="fx-brand">🚆 RailLTL</div>', unsafe_allow_html=True)
 st.markdown(
     """
     <div class="fx-hero">
-      <h2>🚆 RailLTL</h2>
-      <p>AI 기반 소량 화물(LTL) 철도 결합 운송 및 통합 관제 플랫폼</p>
+      <h2>견적 생성</h2>
+      <p>화물 정보를 입력하면 트럭·철도 요금과 소요시간을 바로 비교해드립니다.</p>
     </div>
     """,
     unsafe_allow_html=True,
