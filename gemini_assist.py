@@ -21,6 +21,9 @@ import json
 from google import genai
 from google.genai import types
 
+import cargo
+import rail_freight_nodes
+import road_cost
 from tz_utils import now_kst
 
 GEMINI_API_KEY = ""  # TODO: Streamlit secrets 등으로 주입 (Agent Platform Model APIs 키)
@@ -223,29 +226,65 @@ def start_chat(context: dict | None = None):
     반환값(Chat 세션 객체)은 Streamlit이라면 st.session_state에 담아
     재실행(rerun) 사이에도 유지해야 한다 — 매번 새로 만들면 대화
     맥락이 끊긴다.
+
+    ⚠️ 이전 버전은 "현재 견적 정보에 없는 건 전부 모른다고 답하라"는
+    규칙이 너무 엄격해서, "위험물이면 요금이 어떻게 바뀌어?"처럼 이
+    앱이 실제로는 결정론적 규칙(cargo.py)으로 계산할 수 있는 질문까지
+    거절해버렸다. 그래서 견적 수치와 별개로, 이 앱이 실제로 쓰는
+    "일반 요금 규칙"(카테고리별 할증률, 철도 톤·km 단가, 트럭 차급별
+    요금체계)을 항상 시스템 프롬프트에 같이 넣어, 그 규칙 안에서는
+    추론/설명을 할 수 있게 하되 다른 구간의 구체적 새 견적 금액을
+    지어내는 것만 금지한다.
     """
     client = _get_client()
+
+    general_rules = {
+        "화물종류별_요금_할증률": {
+            c.value: m for c, m in cargo.FARE_SURCHARGE_MULTIPLIER.items()
+        },
+        "철도_톤킬로미터당_운임_원": rail_freight_nodes.RAIL_TON_KM_RATE_WON,
+        "철도_최저운임_적용톤수": rail_freight_nodes.MIN_BILLING_TON,
+        "철도_상하차_취급수수료_원_편도당": rail_freight_nodes.RAIL_HANDLING_FEE_WON,
+        "트럭_차급별_요금체계": [
+            {"차급": t.label, "기본료_원": t.base_won, "km당_원": t.per_km_won, "톤당_원": t.per_ton_won}
+            for t in road_cost.TRUCK_TIERS
+        ],
+    }
+    rules_block = (
+        "이 서비스가 실제로 쓰는 일반 요금 산정 규칙(모든 견적에 항상 적용됨):\n"
+        f"{json.dumps(general_rules, ensure_ascii=False, indent=2)}\n\n"
+        "예를 들어 철도는 '거리 × 톤·km단가 × 청구중량 + 상하차 취급수수료×2'로, "
+        "트럭은 화물량에 맞는 차급의 '기본료 + 거리×km당단가 + 중량×톤당단가'로 "
+        "계산되고, 화물종류 할증률은 이 금액에 곱해진다."
+    )
 
     if context:
         system_instruction = (
             "당신은 코레일 화물 운송 견적 상담 챗봇입니다. 화주의 질문에 "
             "존댓말로 간결하게 답하세요.\n\n"
+            f"{rules_block}\n\n"
             "규칙:\n"
-            "1. 아래 '현재 견적 정보'에 있는 숫자만 근거로 답하세요. "
-            "여기 없는 숫자를 추측하거나 새로 계산해서 만들어내지 마세요.\n"
-            "2. 다른 구간·다른 화물의 요금처럼 이 정보에 없는 질문을 받으면, "
+            "1. '현재 견적 정보'의 구체적 금액이나 '일반 요금 규칙'에 없는 "
+            "숫자를 새로 지어내지 마세요(예: 다른 구간의 정확한 원화 금액).\n"
+            "2. 하지만 '일반 요금 규칙'을 근거로 한 설명·추론(예: 특정 화물종류면 "
+            "할증이 몇 배 적용되는지, 왜 철도가 저렴한 경향이 있는지)은 적극적으로 "
+            "답하세요 — 이건 모른다고 답할 필요 없습니다.\n"
+            "3. 다른 구간의 정확한 견적처럼 위 두 정보 다 없는 질문을 받으면, "
             "모른다고 답하고 화면에서 직접 조회해보라고 안내하세요.\n"
-            "3. 화물 운송·철도·물류와 무관한 질문에는 정중히 답변을 "
+            "4. 화물 운송·철도·물류와 무관한 질문에는 정중히 답변을 "
             "거절하고 주제를 안내하세요.\n\n"
             f"현재 견적 정보:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
         )
     else:
         system_instruction = (
             "당신은 코레일 화물 운송 견적 상담 챗봇입니다. 화주의 질문에 "
-            "존댓말로 간결하게 답하세요. 아직 견적을 조회하지 않은 상태이니, "
-            "위 폼에서 출발지/도착지/화물정보를 입력하고 '비교하기'를 눌러 "
-            "견적을 먼저 조회해달라고 안내하세요. 화물 운송·철도·물류와 "
-            "무관한 질문에는 정중히 답변을 거절하세요."
+            "존댓말로 간결하게 답하세요. 아직 견적을 조회하지 않은 상태입니다.\n\n"
+            f"{rules_block}\n\n"
+            "위 '일반 요금 규칙'에 대한 질문(예: 위험물 할증률, 톤·km 단가)은 "
+            "그 규칙으로 바로 답하세요. 하지만 실제 견적(구체적 요금/시간)이 "
+            "필요한 질문에는, 위 폼에서 출발지/도착지/화물정보를 입력하고 "
+            "'비교하기'를 눌러 견적을 먼저 조회해달라고 안내하세요. 화물 운송·철도·"
+            "물류와 무관한 질문에는 정중히 답변을 거절하세요."
         )
 
     return client.chats.create(
