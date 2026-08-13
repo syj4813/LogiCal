@@ -12,10 +12,17 @@ page0_home.py에서 "철도 통합운송"으로 예약 확정한 화물만 여�
 import streamlit as st
 
 import delay_risk
+import map_view
+import road_cost
 import shared_store
 from gemini_assist import explain_delay_risk
 from rail_freight_nodes import FREIGHT_NODES
 from tz_utils import now_kst_naive
+
+try:
+    road_cost.KAKAO_REST_API_KEY = st.secrets.get("KAKAO_REST_API_KEY", "")
+except Exception:
+    road_cost.KAKAO_REST_API_KEY = ""
 
 st.title("📦 화주용 실시간추적")
 st.caption("예약 확정된 화물의 door-to-door 진행 상황을 확인합니다.")
@@ -72,10 +79,13 @@ st.caption(
     "실제보다 낮게 나올 수 있습니다."
 )
 
-_NODE_LAT = {n.name: n.lat for n in FREIGHT_NODES}
-_origin_lat = _NODE_LAT.get(record.get("출발화물역"))
-_dest_lat = _NODE_LAT.get(record.get("도착화물역"))
-_direction = "하" if (_origin_lat is not None and _dest_lat is not None and _origin_lat > _dest_lat) else "상"
+_NODE_COORDS = {n.name: (n.lat, n.lng) for n in FREIGHT_NODES}
+_origin_node_latlng = _NODE_COORDS.get(record.get("출발화물역"))
+_dest_node_latlng = _NODE_COORDS.get(record.get("도착화물역"))
+_direction = (
+    "하" if (_origin_node_latlng and _dest_node_latlng and _origin_node_latlng[0] > _dest_node_latlng[0])
+    else "상"
+)
 t_start = record.get("희망출발시각")
 
 
@@ -121,6 +131,36 @@ st.progress((stage_idx + 1) / len(shared_store.STAGE_LABELS))
 for i, label in enumerate(shared_store.STAGE_LABELS):
     marker = "✅" if i < stage_idx else ("🚚" if i == stage_idx else "⬜")
     st.write(f"{marker} {label}")
+
+st.divider()
+st.subheader("🗺️ 이동경로")
+
+
+@st.cache_data(show_spinner=False)
+def _cached_road_path(o_lng: float, o_lat: float, d_lng: float, d_lat: float) -> list[tuple[float, float]]:
+    return road_cost.get_road_distance_duration(o_lng, o_lat, d_lng, d_lat)["path"]
+
+
+origin_latlng = (record.get("출발지위도"), record.get("출발지경도"))
+dest_latlng = (record.get("도착지위도"), record.get("도착지경도"))
+if all(origin_latlng) and all(dest_latlng) and _origin_node_latlng and _dest_node_latlng:
+    on_lat, on_lng = _origin_node_latlng
+    dn_lat, dn_lng = _dest_node_latlng
+    first_mile_path = _cached_road_path(origin_latlng[1], origin_latlng[0], on_lng, on_lat)
+    last_mile_path = _cached_road_path(dn_lng, dn_lat, dest_latlng[1], dest_latlng[0])
+    deck = map_view.build_route_map(
+        origin_lat=origin_latlng[0], origin_lng=origin_latlng[1],
+        dest_lat=dest_latlng[0], dest_lng=dest_latlng[1],
+        origin_node=(on_lat, on_lng, record.get("출발화물역", "")),
+        dest_node=(dn_lat, dn_lng, record.get("도착화물역", "")),
+        first_mile_path=first_mile_path,
+        last_mile_path=last_mile_path,
+        show_truck_line=False,
+    )
+    st.caption("🟢 첫/막판마일(트럭) · 🔵 철도 구간(역-역 직선 근사)")
+    st.pydeck_chart(deck)
+else:
+    st.caption("이 예약 건은 좌표 정보가 없어 이동경로 지도를 표시할 수 없습니다.")
 
 st.divider()
 st.subheader("예약 상세")
