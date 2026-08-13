@@ -35,15 +35,15 @@ DRIVER_CURRENT_STATION = {
 st.markdown(
     """
     <style>
-    .driver-hero {
+    .fx-hero {
         padding: 22px 24px;
         border-radius: 16px;
-        background: linear-gradient(135deg, #17324d 0%, #285b7f 100%);
+        background: linear-gradient(135deg, #0F6E4F 0%, #14895F 100%);
         color: white;
         margin-bottom: 18px;
     }
-    .driver-hero h2 { margin: 0; color: white; }
-    .driver-hero p { margin: 6px 0 0 0; opacity: .9; }
+    .fx-hero h2 { margin: 0; color: white; }
+    .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -51,7 +51,7 @@ st.markdown(
 
 st.markdown(
     """
-    <div class="driver-hero">
+    <div class="fx-hero">
       <h2>🚛 트럭기사 대시보드</h2>
       <p>오늘의 배차 · 도착 예정 화물 · 복귀 화물 매칭 · 예상 수익</p>
     </div>
@@ -63,7 +63,7 @@ head1, head2 = st.columns([4, 1])
 with head1:
     driver = st.selectbox("기사 선택", _DRIVER_NAMES, label_visibility="collapsed")
 with head2:
-    if st.button("🔄 새로고침", use_container_width=True):
+    if st.button("🔄 새로고침", width="stretch"):
         st.rerun()
 
 my_station = DRIVER_CURRENT_STATION[driver]
