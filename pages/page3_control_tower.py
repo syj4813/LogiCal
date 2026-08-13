@@ -43,15 +43,20 @@ st.markdown(
         overflow: hidden;
     }
     .fx-station-bar-fill { background: #0F6E4F; height: 100%; }
+    .fx-brand {
+        text-align: center; margin-bottom: 8px;
+        font-size: 1.05rem; font-weight: 800; color: #0F6E4F; letter-spacing: 0.5px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+st.markdown('<div class="fx-brand">🚆 RailLTL</div>', unsafe_allow_html=True)
 st.markdown(
     """
     <div class="fx-hero">
-      <h2>🛰️ 관제센터 대시보드</h2>
+      <h2>🛰️ 관제센터</h2>
       <p>전체 예약 · 운송 단계 · 화물역 집중도 · 개별 화물 현황</p>
     </div>
     """,
