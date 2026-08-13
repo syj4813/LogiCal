@@ -4,3 +4,4 @@ google-genai
 lightgbm
 numpy
 pandas>=2.0
+pydeck
