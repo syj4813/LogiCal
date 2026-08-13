@@ -128,4 +128,3 @@ def predict_delay_risk(
         level = "높음"
 
     return {"probability": probability, "level": level, "signals": row}
-ㅁ
