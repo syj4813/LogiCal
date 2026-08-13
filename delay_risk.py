@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""화물열차 지연(운휴) 위험도 — 학습된 LightGBM 모델 추론 + 정성적 수동 보정.
+"""화물열차 지연(운휴) 위험도 — 학습된 LightGBM 모델 추론.
 
 ⚠️ 이 모델은 실제 개별 열차의 취소 이력으로 학습한 게 아니다. 사용자가
    확보한 "2026 화물열차운행계획" 엑셀의 실측 통계(요일별 운휴율, 운휴
@@ -17,15 +17,9 @@
    추론 시 항상 0(공차회송 아님)으로 넣는다 — 즉 실제보다 위험도가
    낮게 나올 수 있다는 한계가 있다. 화면에도 이 한계를 표시한다.
 
-── 정성적 수동 보정 (이번에 추가) ──────────────────────────────
-여객열차 사고, 기상특보, 선로 보수공사 같은 요인은 실시간 데이터 연동이
-없어 학습된 모델 자체에는 넣을 수 없다. 대신 관제사/화주가 "오늘은 이런
-상황이다"를 직접 체크하면(passenger_incident/weather_advisory/
-track_maintenance), 모델이 계산한 확률 위에 **규칙 기반으로 확률을
-가산**한다. 이 가산치(+0.15/+0.10/+0.08)는 학습된 게 아니라 순전히
-잠정 추정치다 — 실제 지연 발생률 데이터로 보정된 게 아니므로, 근거
-자료가 생기면 이 숫자부터 교체해야 한다. 자동 감지가 아니라 "사람이
-아는 정보를 반영하는 수동 입력"이라는 점을 화면에도 명시해야 한다.
+정성적 요인(장마철/동절기/요일/노선 등)은 별도 입력 없이 이미 signals에
+전부 담겨 반환되고, gemini_assist.explain_delay_risk()가 이 신호들을
+근거로 자연어 설명을 생성한다 — 화주가 따로 체크하거나 입력할 게 없다.
 """
 
 from datetime import datetime
@@ -43,15 +37,6 @@ FEATURES = [
 ]
 
 _WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
-
-# ⚠️ 잠정 추정치 — 실제 지연 발생률 데이터로 보정된 계수가 아니다.
-# 모델이 학습하지 못한(실시간 데이터가 없는) 정성적 요인을 사람이 직접
-# 체크했을 때, 확률에 더할 가산치(확률 스케일, 0~1 기준).
-QUALITATIVE_ADJUSTMENT = {
-    "passenger_incident": 0.15,   # 여객열차 사고/지연으로 화물열차가 대기하는 경우
-    "weather_advisory": 0.10,     # 당일 실제 기상특보(집중호우·폭설 등) 발효
-    "track_maintenance": 0.08,    # 해당 구간 선로 보수공사로 인한 서행/우회
-}
 
 _booster: lgb.Booster | None = None
 
@@ -93,14 +78,6 @@ def _departure_slot(dt: datetime) -> str:
     return "야간(18-24)"
 
 
-def _level_from_probability(probability: float) -> str:
-    if probability < 0.15:
-        return "낮음"
-    if probability < 0.25:
-        return "보통"
-    return "높음"
-
-
 def predict_delay_risk(
     *,
     origin_node_name: str,
@@ -111,23 +88,10 @@ def predict_delay_risk(
     consolidated: bool,
     direction: str = "하",
     empty_reposition: bool = False,
-    passenger_incident: bool = False,
-    weather_advisory: bool = False,
-    track_maintenance: bool = False,
 ) -> dict:
     """화물 1건의 지연(운휴) 위험 확률과 등급, 사용한 입력 신호를 반환.
 
-    passenger_incident/weather_advisory/track_maintenance는 학습된
-    모델 입력이 아니라, 사람이 직접 체크한 정성적 요인에 대한 규칙
-    기반 확률 가산이다 — QUALITATIVE_ADJUSTMENT 참고.
-
-    반환: {
-        "probability": 0~1 (모델예측+정성보정 반영된 최종값),
-        "model_probability": 0~1 (정성보정 전, 순수 모델 예측값),
-        "level": "낮음|보통|높음",
-        "signals": {...모델 입력 신호...},
-        "qualitative_overrides": {...사람이 체크한 정성적 요인과 적용된 가산치...},
-    }
+    반환: {"probability": 0~1, "level": "낮음|보통|높음", "signals": {...}}
     """
     weekday_ko = _WEEKDAY_KO[departure_dt.weekday()]
     month = departure_dt.month
@@ -154,26 +118,14 @@ def predict_delay_risk(
     for col in CATEGORICAL:
         df[col] = pd.Categorical(df[col], categories=booster.pandas_categorical[CATEGORICAL.index(col)])
 
-    model_probability = float(booster.predict(df[FEATURES])[0])
+    probability = float(booster.predict(df[FEATURES])[0])
 
-    # ── 정성적 수동 보정 적용 ──
-    overrides = {
-        "passenger_incident": bool(passenger_incident),
-        "weather_advisory": bool(weather_advisory),
-        "track_maintenance": bool(track_maintenance),
-    }
-    applied_adjustment = sum(
-        QUALITATIVE_ADJUSTMENT[key] for key, checked in overrides.items() if checked
-    )
-    final_probability = min(1.0, model_probability + applied_adjustment)
+    if probability < 0.15:
+        level = "낮음"
+    elif probability < 0.25:
+        level = "보통"
+    else:
+        level = "높음"
 
-    return {
-        "probability": final_probability,
-        "model_probability": model_probability,
-        "level": _level_from_probability(final_probability),
-        "signals": row,
-        "qualitative_overrides": {
-            **overrides,
-            "적용_가산치_합": round(applied_adjustment, 3),
-        },
-    }
+    return {"probability": probability, "level": level, "signals": row}
+ㅁ
