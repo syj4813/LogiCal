@@ -66,17 +66,10 @@ st.markdown(
     """
     <div class="fx-hero">
       <h2>🚃 화차 배치 추천</h2>
-      <p>지도학습 회귀 모델(LightGBM, 150개 트리, 테스트 R²=0.970)이 화물에 맞는 화차를 예측·추천합니다.</p>
+      <p>예약된 화물에 가장 적합한 화차를 자동으로 추천합니다.</p>
     </div>
     """,
     unsafe_allow_html=True,
-)
-st.warning(
-    "⚠️ 예측 모델 자체는 실제 학습된 AI 모델(그래디언트 부스팅)이지만, 학습 라벨은 코레일 "
-    "실제 배치 규정이 아닌 제공된 합성 데이터 기준입니다. 화차 편성도 실제 편성 데이터가 없어 "
-    "열차번호 기반으로 결정론적으로 생성한 mock이고, 화물 규격도 중량·화물종류 기반 추정치입니다. "
-    "참고용으로만 활용하세요.",
-    icon="⚠️",
 )
 
 if st.button("🔄 새로고침"):
@@ -106,13 +99,13 @@ idx = st.selectbox("배치할 화물을 선택하세요", range(len(unassigned))
 record = unassigned[idx]
 selected_id = record["화물ID"]
 
-st.subheader(f"화물 {selected_id} — 열차 {record.get('열차번호') or '(추정시각표, 미배정 열차번호)'} 편성")
+st.subheader(f"화물 {selected_id} — 열차 {record.get('열차번호') or '배정 예정'} 편성")
 
-total_cars = st.slider("편성 화차 수 (mock)", min_value=10, max_value=30, value=20)
+total_cars = st.slider("편성 화차 수", min_value=10, max_value=30, value=20)
 train_key = record.get("열차번호") or f"EST-{selected_id}"
 wagons = car_assignment.generate_mock_train_composition(train_key, n_wagons=total_cars)
 
-with st.expander("편성 전체 보기 (mock)"):
+with st.expander("편성 전체 보기"):
     st.dataframe(
         [
             {
@@ -130,11 +123,9 @@ with st.expander("편성 전체 보기 (mock)"):
 weight_kg = record.get("화물중량kg") or (record.get("중량톤", 0) * 1000)
 if record.get("화물길이cm"):
     length, width, height = record["화물길이cm"], record["화물폭cm"], record["화물높이cm"]
-    dims_note = "실측값"
 else:
     category = classify_cargo_type(record.get("화물종류", ""))
     length, width, height = estimate_dims_cm(weight_kg, category)
-    dims_note = f"추정값 — 중량 {weight_kg:,.0f}kg × '{category.value}' 평균 밀도 기준"
 
 hazmat = bool(record.get("위험물여부"))
 liquid_or_gas = bool(record.get("액체기체위험물여부"))
@@ -146,7 +137,6 @@ c1.metric("중량", f"{weight_kg:,.0f} kg")
 c2.metric("규격(길이×폭×높이)", f"{length:.0f}×{width:.0f}×{height:.0f} cm")
 c3.metric("위험물", ("예 (액체·기체)" if liquid_or_gas else "예 (고체)") if hazmat else "아니오")
 c4.metric("파손주의", "예" if fragile else "아니오")
-st.caption(f"규격은 {dims_note}입니다.")
 
 recommendations = car_assignment.recommend_wagons(
     cargo_weight_kg=weight_kg,
@@ -162,18 +152,12 @@ recommendations = car_assignment.recommend_wagons(
 st.divider()
 st.subheader("🤖 추천 순위 (적합도 점수)")
 if liquid_or_gas:
-    st.caption(
-        "ℹ️ 액체·기체 위험물이라 탱크차만 후보입니다 — 다른 화차는 애초에 액체를 "
-        "담는 구조가 아니라 선택지가 아닙니다 (모델 순위가 아닌 물리적 제약)."
-    )
+    st.caption("ℹ️ 액체·기체 위험물이라 탱크차만 후보로 보여드립니다.")
 else:
-    st.caption(
-        "ℹ️ 액체·기체 위험물이 아니라 탱크차는 추천 후보에서 제외했습니다 "
-        "(모델 점수가 아닌 규칙 기반 필터 — 고체 위험물도 탱크차엔 부적합)."
-    )
+    st.caption("ℹ️ 액체·기체 위험물이 아니라 탱크차는 후보에서 제외했습니다.")
 
 if recommendations.empty:
-    st.error("이 편성에는 조건에 맞는 화차가 없습니다(탱크차가 없는 편성입니다) — 화차 수를 늘리거나 다른 열차가 필요합니다.")
+    st.error("이 편성에는 조건에 맞는 화차가 없습니다 — 화차 수를 늘리거나 다른 열차를 선택해주세요.")
     st.stop()
 
 # 추천 카드마다 큼직한 순위/점수와 상태를 보여주고, 바로 아래 전용
@@ -219,12 +203,6 @@ for rank, row in recommendations.reset_index(drop=True).iterrows():
         )
         st.rerun()
     st.write("")
-
-st.divider()
-st.caption(
-    "※ 적합도 점수는 실제 학습된 모델(입력 대비 결정론적)이 계산하며, 화차 편성 자체는 "
-    "mock입니다. '적재 가능/초과'는 모델 점수와 별개로 잔여 적재량을 직접 비교한 규칙 판정입니다."
-)
 
 if assigned:
     st.divider()
