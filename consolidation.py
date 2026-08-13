@@ -3,10 +3,10 @@
 소량 화물 통합(consolidation) — 규칙 기반 그룹핑.
 
 방식: 같은 출발 화물역-도착 화물역 쌍 + 희망일 ±2일 이내인 화주끼리
-      묶어서, 합산 중량이 LCL 최소 결합 기준(MIN_CONSOLIDATION_TON)을
-      넘는지 판정한다. 컨테이너를 완전히 채울 필요는 없음 —
-      단독으로 컨테이너를 다 채우는 대형 화물(CONTAINER_MAX_TON 이상)은
-      풀 결합 없이 바로 단독 발송으로 처리한다.
+      묶어서 몇 건이 결합됐는지 보여준다. 다만 철도 이용 가능 여부
+      자체는 결합 여부와 무관하게 500kg 이상이면 통과한다 — 실제
+      풀에 결합 상대가 있는지와 상관없이, 소량 화물 기준(500kg)만
+      넘으면 철도 통합운송을 검토할 수 있게 하기 위함.
 
 DBSCAN 등 밀도 기반 군집화 대신 이 방식을 쓰는 이유:
   - 표본이 적은 데모 환경에서 결과 재현성이 높고, 판정 근거를
@@ -18,7 +18,7 @@ DBSCAN 등 밀도 기반 군집화 대신 이 방식을 쓰는 이유:
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from rail_freight_nodes import CONTAINER_MAX_TON, MIN_CONSOLIDATION_TON, MIN_SHIPMENT_TON_FOR_RAIL
+from rail_freight_nodes import MIN_SHIPMENT_TON_FOR_RAIL
 from rail_cost import nearest_freight_node
 
 
@@ -48,7 +48,14 @@ def evaluate_consolidation(
     pool: list[ShipperOrder],
     date_window_days: int = 2,
 ) -> ConsolidationResult:
-    """새 주문이 (단독으로 또는 풀과 결합해) 철도 이용 가능한지 판정."""
+    """새 주문이 철도 이용 가능한지 판정.
+
+    ⚠️ 철도 이용 가능 여부는 500kg 이상이기만 하면 통과한다 — 풀 안에
+    결합 상대가 있는지, 합산 중량이 얼마인지는 이제 판정에 영향을 주지
+    않는다(예전엔 최소 결합 기준 톤수 미달이면 거절했었음). 결합 상대
+    탐색 자체는 여전히 하는데, 이건 순전히 "몇 건과 같이 묶였는지"를
+    화주에게 보여주고 화차배치 등 후단에 넘기기 위한 정보용이다.
+    """
     if new_order.weight_ton < MIN_SHIPMENT_TON_FOR_RAIL:
         return ConsolidationResult(
             False,
@@ -62,18 +69,7 @@ def evaluate_consolidation(
     if origin_node.name == dest_node.name:
         return ConsolidationResult(False, "출발/도착이 같은 화물역 권역이라 철도 이용 실익이 없습니다.")
 
-    # 1) 단독으로 컨테이너 기준을 채우는 대형 화물인 경우
-    if new_order.weight_ton >= CONTAINER_MAX_TON:
-        return ConsolidationResult(
-            True,
-            "단독 화물만으로 철도 이용 가능",
-            origin_node.name,
-            dest_node.name,
-            [new_order.order_id],
-            new_order.weight_ton,
-        )
-
-    # 2) 같은 화물역 쌍 + 희망일 인접 화주들과 그룹핑
+    # 같은 화물역 쌍 + 희망일 인접 화주들과 그룹핑 (정보용 — 판정에는 미반영)
     window_start = new_order.desired_date - timedelta(days=date_window_days)
     window_end = new_order.desired_date + timedelta(days=date_window_days)
 
@@ -92,21 +88,17 @@ def evaluate_consolidation(
 
     total_weight = sum(o.weight_ton for o in grouped)
 
-    if total_weight >= MIN_CONSOLIDATION_TON:
-        return ConsolidationResult(
-            True,
-            f"유사 조건 화주 {len(grouped) - 1}건과 결합 시 철도 이용 가능 "
-            f"(합산 {total_weight:.1f}톤 — 컨테이너 공유 적재)",
-            origin_node.name,
-            dest_node.name,
-            [o.order_id for o in grouped],
-            total_weight,
+    if len(grouped) > 1:
+        reason = (
+            f"유사 조건 화주 {len(grouped) - 1}건과 결합해 철도 이용 가능 "
+            f"(합산 {total_weight:.1f}톤)"
         )
+    else:
+        reason = "철도 이용 가능"
 
     return ConsolidationResult(
-        False,
-        f"현재 풀 내 결합 가능 화주 기준 합산 {total_weight:.1f}톤 "
-        f"(최소 결합 기준 {MIN_CONSOLIDATION_TON}톤 미달) — 철도 이용 불가, 트럭/퀵/KTX특송만 비교",
+        True,
+        reason,
         origin_node.name,
         dest_node.name,
         [o.order_id for o in grouped],
