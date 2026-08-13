@@ -82,7 +82,7 @@ st.markdown(
     """
     <div class="fx-hero">
       <div style="font-size:1.5rem; font-weight:700;">🚆 RailLTL</div>
-      <div style="opacity:0.9; margin-top:4px;">500kg 이상 화물 · 트럭 단독 vs 트럭+철도 통합운송(door-to-door) 실측 비교</div>
+      <div style="opacity:0.9; margin-top:4px;">AI 기반 소량 화물(LTL) 철도 결합 운송 및 통합 관제 플랫폼</div>
     </div>
     """,
     unsafe_allow_html=True,
