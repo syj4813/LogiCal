@@ -130,50 +130,42 @@ if recommendations.empty:
     st.error("이 편성에는 조건에 맞는 화차가 없습니다(탱크차가 없는 편성입니다) — 화차 수를 늘리거나 다른 열차가 필요합니다.")
     st.stop()
 
+# 추천 카드 자체를 클릭하면 즉시 해당 화차로 배정합니다.
+# 별도의 화차 선택 드롭다운/확정 버튼을 없애 클릭 단계를 줄였습니다.
+st.caption("원하는 추천 화차 카드를 클릭하면 바로 배정됩니다.")
+
 for rank, row in recommendations.reset_index(drop=True).iterrows():
-    with st.container(border=True):
-        cc1, cc2, cc3 = st.columns([1, 2, 1])
-        with cc1:
-            st.metric(f"{rank + 1}위", f"{row['적합도_점수'] * 100:.1f}점")
-        with cc2:
-            st.markdown(f"**{row['화차번호']}** · {row['화차종류']} · {row['위치']}")
-            remaining_kg = row["최대적재_kg"] - row["현재적재_kg"]
-            st.caption(
-                f"잔여적재 {remaining_kg:,.0f}kg / 잔여용적 {row['잔여용적_m3']}m³ · "
-                f"위험물차와 {row['위험물차와_거리']}칸"
-            )
-        with cc3:
-            if row["적재가능여부"] == "❌ 초과":
-                st.error("적재 초과")
-            elif liquid_or_gas and row["위험물차와_거리"] == 0:
-                st.success("위험물차 본인")
-            else:
-                st.success("적재 가능")
+    remaining_kg = row["최대적재_kg"] - row["현재적재_kg"]
+    assignable = row["적재가능여부"] != "❌ 초과"
+
+    if not assignable:
+        status_text = "❌ 적재 초과"
+    elif liquid_or_gas and row["위험물차와_거리"] == 0:
+        status_text = "✅ 위험물차 본인"
+    else:
+        status_text = "✅ 적재 가능"
+
+    # st.button 전체 영역이 클릭 가능한 추천 카드 역할을 합니다.
+    card_label = (
+        f"**{rank + 1}위  ·  {row['적합도_점수'] * 100:.1f}점**\n\n"
+        f"**{row['화차번호']}** · {row['화차종류']} · {row['위치']}\n\n"
+        f"잔여적재 {remaining_kg:,.0f}kg / 잔여용적 {row['잔여용적_m3']}m³ · "
+        f"위험물차와 {row['위험물차와_거리']}칸   |   {status_text}"
+    )
+
+    if st.button(
+        card_label,
+        key=f"assign_card_{selected_id}_{row['화차번호']}",
+        use_container_width=True,
+        disabled=not assignable,
+    ):
+        shared_store.assign_car(selected_id, row["화차번호"])
+        st.session_state["last_car_assignment"] = (
+            f"{selected_id} → {row['화차번호']} 화차"
+        )
+        st.rerun()
 
 st.divider()
-st.subheader("배정할 화차 선택")
-pick_labels = [
-    f"{rank + 1}위 · {row['화차번호']} ({row['화차종류']}, {row['적합도_점수'] * 100:.1f}점)"
-    for rank, row in recommendations.reset_index(drop=True).iterrows()
-]
-picked_idx = st.selectbox(
-    "관제센터 담당자가 순위표를 보고 직접 고를 수 있습니다 (기본값: 1위)",
-    range(len(recommendations)),
-    format_func=lambda i: pick_labels[i],
-)
-chosen = recommendations.reset_index(drop=True).iloc[picked_idx]
-
-if chosen["적재가능여부"] == "❌ 초과":
-    st.warning("⚠️ 선택한 화차는 잔여 적재량을 초과합니다 — 다른 화차를 고려해 주세요.")
-
-if st.button(f"✅ {chosen['화차번호']} 화차로 배정 확정", type="primary"):
-    shared_store.assign_car(selected_id, chosen["화차번호"])
-    # st.success() 직후 바로 st.rerun()을 부르면 메시지가 화면에 그려질 새도 없이
-    # 사라짐 — session_state에 남겨뒀다가 재실행 후 페이지 상단에서 보여준다.
-    # (부가 이점: 재실행되면 방금 배정된 건이 미배정 목록에서 곧바로 빠진다.)
-    st.session_state["last_car_assignment"] = f"{selected_id} → {chosen['화차번호']} 화차"
-    st.rerun()
-
 st.caption(
     "※ 적합도 점수는 실제 학습된 모델(입력 대비 결정론적)이 계산하며, 화차 편성 자체는 "
     "mock입니다. '적재 가능/초과'는 모델 점수와 별개로 잔여 적재량을 직접 비교한 규칙 판정입니다."
