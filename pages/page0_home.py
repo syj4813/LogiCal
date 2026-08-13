@@ -11,6 +11,7 @@ import streamlit as st
 
 import gemini_assist
 import geocode
+import map_view
 import road_cost
 import shared_store
 from cargo import CargoCategory, classify_cargo_type, apply_surcharge, is_mode_restricted, is_liquid_or_gas_hazmat
@@ -328,21 +329,36 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
                 unsafe_allow_html=True,
             )
 
-    # ── 비교 차트 ──
+    # ── CO2 배출량 비교 ──
     if rail_available:
         st.divider()
-        chart_data = {
-            "수단": ["트럭 단독", "철도 통합운송"],
-            "요금(만원)": [truck_fare / 10000, im.total_fare_won / 10000],
-            "CO2(kg)": [truck_emission["gwp_kg_co2e"], im.total_gwp_kg_co2e],
-        }
-        cc1, cc2 = st.columns(2)
-        with cc1:
-            st.caption("요금 비교 (만원)")
-            st.bar_chart({"요금(만원)": dict(zip(chart_data["수단"], chart_data["요금(만원)"]))})
-        with cc2:
-            st.caption("CO2 배출량 비교 (kg)")
-            st.bar_chart({"CO2(kg)": dict(zip(chart_data["수단"], chart_data["CO2(kg)"]))})
+        st.caption("CO2 배출량 비교 (kg)")
+        st.bar_chart({
+            "CO2(kg)": {"트럭 단독": truck_emission["gwp_kg_co2e"], "철도 통합운송": im.total_gwp_kg_co2e}
+        })
+
+    # ── 이동경로 지도 ──
+    st.divider()
+    st.subheader("🗺️ 이동경로")
+    if rail_available:
+        deck = map_view.build_route_map(
+            origin_lat=r["origin_lat"], origin_lng=r["origin_lng"],
+            dest_lat=r["dest_lat"], dest_lng=r["dest_lng"],
+            truck_only_path=direct.get("path"),
+            origin_node=(im.origin_node_lat, im.origin_node_lng, im.origin_node_name),
+            dest_node=(im.dest_node_lat, im.dest_node_lng, im.dest_node_name),
+            first_mile_path=im.first_mile_path,
+            last_mile_path=im.last_mile_path,
+        )
+        st.caption("🟠 트럭 직송 · 🟢 첫/막판마일(트럭) · 🔵 철도 구간(역-역 직선 근사)")
+    else:
+        deck = map_view.build_route_map(
+            origin_lat=r["origin_lat"], origin_lng=r["origin_lng"],
+            dest_lat=r["dest_lat"], dest_lng=r["dest_lng"],
+            truck_only_path=direct.get("path"),
+        )
+        st.caption("🟠 트럭 직송 경로")
+    st.pydeck_chart(deck)
 
     # ── 예약 확정 → 공유 저장소 기록 ──────────────────────────
     # 실시간 Door-to-Door 추적·트럭기사 앱·관제센터 연계는 "철도 통합운송"
@@ -365,6 +381,10 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
                 화물종류=r["cargo_text"],
                 출발지주소=r["origin_addr"],
                 도착지주소=r["dest_addr"],
+                출발지위도=r["origin_lat"],
+                출발지경도=r["origin_lng"],
+                도착지위도=r["dest_lat"],
+                도착지경도=r["dest_lng"],
                 출발화물역=im.origin_node_name,
                 도착화물역=im.dest_node_name,
                 중량톤=weight_ton,
@@ -445,6 +465,9 @@ else:
                 "철도통합운송_CO2_kg": im.total_gwp_kg_co2e,
                 "출발화물역": im.origin_node_name,
                 "도착화물역": im.dest_node_name,
+                "트럭대비_탄소절감량_kgCO2eq": round(truck_emission["gwp_kg_co2e"] - im.total_gwp_kg_co2e, 1),
+                "나무환산_그루_연간흡수량기준": tree_eq,
+                "예약확정시_적립예상_탄소마일리지_P": mileage_preview,
             })
         else:
             chat_context["철도이용불가사유"] = consolidation.reason
