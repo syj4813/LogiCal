@@ -58,14 +58,19 @@ st.markdown(
     }
     .fx-status-ok { background: #E4F5EA; color: #0F6E4F; }
     .fx-status-bad { background: #FBE7E4; color: #B0392F; }
+    .fx-brand {
+        text-align: center; margin-bottom: 8px;
+        font-size: 1.05rem; font-weight: 800; color: #0F6E4F; letter-spacing: 0.5px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
+st.markdown('<div class="fx-brand">🚆 RailLTL</div>', unsafe_allow_html=True)
 st.markdown(
     """
     <div class="fx-hero">
-      <h2>🚃 화차 배치 추천</h2>
+      <h2>🚃 화차 배치</h2>
       <p>예약된 화물에 가장 적합한 화차를 자동으로 추천합니다.</p>
     </div>
     """,
