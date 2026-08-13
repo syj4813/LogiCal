@@ -26,10 +26,24 @@ from tz_utils import now_kst
 GEMINI_API_KEY = ""  # TODO: Streamlit secrets 등으로 주입 (Agent Platform Model APIs 키)
 GEMINI_MODEL = "gemini-3.5-flash"
 
+# ⚠️ 클라이언트를 함수 호출마다 새로 만들지 않고 모듈 레벨에서 하나만 캐싱해서
+#    재사용한다. start_chat()이 지역변수 client로 만들어서 Chat 객체만
+#    반환했더니, 다음 Streamlit rerun 때 그 지역변수가 가비지컬렉션되면서
+#    내부 httpx 클라이언트까지 닫혀 "Cannot send a request, as the client
+#    has been closed" 오류가 났던 버그가 있었다 — 모듈이 강한 참조를 계속
+#    들고 있으면 이 문제가 사라진다.
+_client: genai.Client | None = None
+
+
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        _client = genai.Client(vertexai=True, api_key=GEMINI_API_KEY)
+    return _client
+
 
 def _call_gemini(prompt: str) -> str:
-    client = genai.Client(vertexai=True, api_key=GEMINI_API_KEY)
-    response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    response = _get_client().models.generate_content(model=GEMINI_MODEL, contents=prompt)
     return response.text
 
 
@@ -210,7 +224,7 @@ def start_chat(context: dict | None = None):
     재실행(rerun) 사이에도 유지해야 한다 — 매번 새로 만들면 대화
     맥락이 끊긴다.
     """
-    client = genai.Client(vertexai=True, api_key=GEMINI_API_KEY)
+    client = _get_client()
 
     if context:
         system_instruction = (
