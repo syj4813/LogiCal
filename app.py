@@ -24,9 +24,6 @@ pages = {
         st.Page("pages/page3_control_tower.py", title="관제센터", icon="🛰️"),
         st.Page("pages/page4_car_assignment.py", title="화차 배치 추천", icon="🚃"),
     ],
-    "기타": [
-        st.Page("pages/page9_debug_weather.py", title="(임시) 날씨 디버그", icon="🔧"),  # TODO: 확인 끝나면 이 줄과 파일 삭제
-    ],
 }
 
 nav = st.navigation(pages)
