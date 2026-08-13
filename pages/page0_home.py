@@ -193,6 +193,26 @@ with st.form("quote_form"):
     submitted = st.form_submit_button("비교하기", type="primary", width="stretch")
 
 
+def _classify_cargo(cargo_text: str) -> CargoCategory:
+    """화물종류 분류 — Gemini 키가 있으면 AI 의미기반 판단을 우선 쓰고,
+    없거나 실패하면 키워드 매칭(cargo.classify_cargo_type)으로 폴백한다.
+
+    ⚠️ 키워드 매칭은 정확히 등록된 단어만 잡아서 "한우"/"폭죽"처럼
+    목록에 없는 표현은 전부 일반화물로 새버리는 문제가 있었다(실제로
+    확인된 문제) — 특히 위험물 오분류는 화차배치 단계에서 탱크차 배제
+    로직에도 영향을 준다. AI는 그런 사전에 없는 표현도 의미로 판단할
+    수 있는 대신, 호출마다 결과가 미세하게 달라질 수 있어 재현성은
+    키워드 방식보다 낮다 — 이 트레이드오프를 감수하고 우선순위를 둔다.
+    """
+    if gemini_assist.GEMINI_API_KEY:
+        try:
+            label = gemini_assist.classify_cargo_category(cargo_text)
+            return CargoCategory(label)
+        except Exception:
+            pass
+    return classify_cargo_type(cargo_text)
+
+
 def _finalize_quote(origin_addr, dest_addr, cargo_text, weight_kg, departure_dt):
     """지오코딩 + 결과 계산 → session_state["result"]에 저장 (정상 제출/과거시각 확인 두 경로 공용)."""
     origin_geo = _safe_geocode(origin_addr)
@@ -208,7 +228,7 @@ def _finalize_quote(origin_addr, dest_addr, cargo_text, weight_kg, departure_dt)
     dest_lat, dest_lng = dest_geo
 
     weight_ton = weight_kg / 1000
-    category = classify_cargo_type(cargo_text)
+    category = _classify_cargo(cargo_text)
 
     st.session_state["show_comparison"] = True
     st.session_state["result"] = dict(
