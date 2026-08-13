@@ -23,8 +23,31 @@ import car_assignment
 import shared_store
 from cargo import classify_cargo_type, estimate_dims_cm
 
-st.title("🚃 화차 배치 추천")
-st.caption("지도학습 회귀 모델(LightGBM, 150개 트리, 테스트 R²=0.970)이 화물에 맞는 화차를 예측·추천합니다.")
+st.markdown(
+    """
+    <style>
+    .fx-hero {
+        padding: 22px 24px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #0F6E4F 0%, #14895F 100%);
+        color: white;
+        margin-bottom: 18px;
+    }
+    .fx-hero h2 { margin: 0; color: white; }
+    .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown(
+    """
+    <div class="fx-hero">
+      <h2>🚃 화차 배치 추천</h2>
+      <p>지도학습 회귀 모델(LightGBM, 150개 트리, 테스트 R²=0.970)이 화물에 맞는 화차를 예측·추천합니다.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 st.warning(
     "⚠️ 예측 모델 자체는 실제 학습된 AI 모델(그래디언트 부스팅)이지만, 학습 라벨은 코레일 "
     "실제 배치 규정이 아닌 제공된 합성 데이터 기준입니다. 화차 편성도 실제 편성 데이터가 없어 "
