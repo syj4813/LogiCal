@@ -41,13 +41,6 @@ if last_id in id_options:
 
 with st.sidebar:
     st.header("내 화물 목록")
-    my_ids = st.session_state.get("my_shipment_ids", [])
-    my_total_mileage = sum(
-        (shared_store.get_shipment(sid) or {}).get("탄소마일리지") or 0 for sid in my_ids
-    )
-    st.metric("🪙 내 총 탄소 마일리지", f"{my_total_mileage:,}P")
-    st.caption("이 브라우저 세션에서 예약 확정한 화물 기준 누적치입니다.")
-    st.divider()
     selected_id = st.radio(
         "조회할 화물을 선택하세요",
         options=id_options,
@@ -109,12 +102,16 @@ if rail_km is not None and t_start is not None:
         record.get("출발화물역", ""), record.get("도착화물역", ""),
     )
     risk_icon = {"낮음": "🟢", "보통": "🟡", "높음": "🔴"}.get(result["level"], "⚪")
-    st.metric("예측 지연위험 확률", f"{result['probability']*100:.1f}%", result["level"])
-    try:
-        reason = explain_delay_risk(result["probability"], result["level"], result["signals"])
-        st.info(f"{risk_icon} {reason}")
-    except Exception:
-        st.info(f"{risk_icon} **{result['level']}** (Gemini 설명 생성 실패 — API 키 확인 필요, 확률 수치 자체는 로컬 모델 결과입니다)")
+    rc1, rc2 = st.columns([1, 2])
+    with rc1:
+        st.metric("예측 지연위험 확률", f"{result['probability']*100:.1f}%", result["level"])
+    with rc2:
+        st.markdown("**🤖 AI 설명 — 이렇게 예측된 요인**")
+        try:
+            reason = explain_delay_risk(result["probability"], result["level"], result["signals"])
+            st.info(f"{risk_icon} {reason}")
+        except Exception:
+            st.info(f"{risk_icon} **{result['level']}** (Gemini 설명 생성 실패 — API 키 확인 필요, 확률 수치 자체는 로컬 모델 결과입니다)")
 else:
     st.caption("지연위험도를 계산할 철도 구간 정보가 부족합니다.")
 
