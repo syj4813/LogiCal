@@ -9,13 +9,7 @@ car_max_load_kg, car_current_load_kg, car_remaining_capacity_m3,
 adjacent_car_hazmat, distance_from_hazmat_car, position_in_car,
 weight_fit_ratio, volume_fit_ratio 기준으로 적합도 점수(0~1)를 예측한다.
 
-⚠️ 위험물 안전 규칙은 모델 점수를 신뢰하지 않고 규칙으로 강제한다.
-   실제로 이 모델(v2)을 그대로 돌려보면, hazmat_class>0인 화물의 Top5
-   추천에 탱크차가 전혀 안 뜨는 경우가 있었다 — 이전 v1 모델에서도
-   같은 패턴(학습 라벨 자체가 위험물-탱크차 관계를 제대로 반영 못함)이
-   있었던 것과 동일한 문제로 보인다. "액체·기체 위험물은 탱크차만
-   허용, 그 외(비위험물+고체위험물)는 탱크차 배제"를 모델 점수 위에
-   상호배타 규칙으로 강제 적용해서 이 문제를 우회한다.
+
 """
 
 from dataclasses import dataclass
