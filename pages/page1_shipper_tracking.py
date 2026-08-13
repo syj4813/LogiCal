@@ -41,6 +41,13 @@ if last_id in id_options:
 
 with st.sidebar:
     st.header("내 화물 목록")
+    my_ids = st.session_state.get("my_shipment_ids", [])
+    my_total_mileage = sum(
+        (shared_store.get_shipment(sid) or {}).get("탄소마일리지") or 0 for sid in my_ids
+    )
+    st.metric("🪙 내 총 탄소 마일리지", f"{my_total_mileage:,}P")
+    st.caption("이 브라우저 세션에서 예약 확정한 화물 기준 누적치입니다.")
+    st.divider()
     selected_id = st.radio(
         "조회할 화물을 선택하세요",
         options=id_options,
@@ -135,8 +142,13 @@ with d2:
     st.write(f"**결합 배송 여부**: {'묶음 배송 (' + str(len(grouped)) + '건 결합)' if grouped else '단독'}")
 
 gwp_savings = record.get("GWP절감(kgCO2eq대비트럭)")
-if gwp_savings is not None:
-    st.metric("탄소 절감량 (트럭 대비)", f"{gwp_savings:.1f} kgCO2eq")
+mileage = record.get("탄소마일리지")
+if gwp_savings is not None or mileage is not None:
+    m1, m2 = st.columns(2)
+    if gwp_savings is not None:
+        m1.metric("탄소 절감량 (트럭 대비)", f"{gwp_savings:.1f} kgCO2eq")
+    if mileage is not None:
+        m2.metric("🪙 이 화물로 적립된 탄소 마일리지", f"{mileage:,}P")
 
 st.caption(
     "※ 진행 단계는 실제 GPS/RFID 트래킹이 아니라, 실제 열차시각표(가능한 경우) 또는 "
