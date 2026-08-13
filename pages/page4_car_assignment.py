@@ -60,7 +60,7 @@ st.markdown(
     .fx-status-bad { background: #FBE7E4; color: #B0392F; }
     .fx-brand {
         text-align: center; margin-bottom: 8px;
-        font-size: 1.05rem; font-weight: 800; color: #0F6E4F; letter-spacing: 0.5px;
+        font-size: 2.5rem; font-weight: 800; color: #0F6E4F; letter-spacing: 0.5px;
     }
     </style>
     """,
