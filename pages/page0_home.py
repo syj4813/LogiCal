@@ -17,7 +17,9 @@ from cargo import CargoCategory, classify_cargo_type, apply_surcharge, is_mode_r
 from consolidation import ShipperOrder, evaluate_consolidation
 from data.mock_pool import get_mock_pool
 from emission import (
+    CARBON_MILEAGE_PER_KG_CO2,
     TransportMode,
+    calculate_carbon_mileage,
     calculate_emission,
     calculate_tree_equivalent,
 )
@@ -297,7 +299,20 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
                 unsafe_allow_html=True,
             )
             st.caption(f"🚉 {im.origin_node_name} → {im.dest_node_name} · {schedule_note}")
+            gwp_savings_kg = truck_emission["gwp_kg_co2e"] - im.total_gwp_kg_co2e
+            mileage_preview = calculate_carbon_mileage(gwp_savings_kg)
             st.success(f"🌳 트럭 대비 절감된 탄소량은 나무 약 **{tree_eq:.1f}그루**가 1년간 흡수하는 양과 비슷합니다.")
+            st.markdown(
+                f"""
+                <div style="background:#EAF6EF; border:1px dashed #0F6E4F; border-radius:10px;
+                            padding:12px 16px; margin-top:8px; font-size:0.92rem;">
+                  🪙 이 화물을 <b>철도 통합운송으로 예약 확정</b>하면 탄소 마일리지
+                  <b>{mileage_preview:,}P</b>가 적립됩니다 (절감 {gwp_savings_kg:.1f}kgCO2eq ×
+                  {CARBON_MILEAGE_PER_KG_CO2}P/kg — ⚠️ 대회 시연용 임의 전환계수).
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
             st.markdown(
                 f"""
@@ -341,6 +356,7 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
         st.subheader("예약 확정")
         if st.button("✅ 예약 확정 (Door-to-Door 추적 시작)", type="primary"):
             gwp_savings = truck_emission["gwp_kg_co2e"] - im.total_gwp_kg_co2e
+            mileage_earned = calculate_carbon_mileage(gwp_savings)
             shipment_id = shared_store.add_shipment(
                 화물종류=r["cargo_text"],
                 출발지주소=r["origin_addr"],
@@ -355,6 +371,7 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
                 **{
                     "GWP(kgCO2eq)": im.total_gwp_kg_co2e,
                     "GWP절감(kgCO2eq대비트럭)": gwp_savings,
+                    "탄소마일리지": mileage_earned,
                 },
                 결합화주ID목록=consolidation.grouped_order_ids,
                 열차번호=im.train_no,
@@ -380,8 +397,11 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
                 화차배정=None,
             )
             st.session_state["last_shipment_id"] = shipment_id
+            st.session_state.setdefault("my_shipment_ids", [])
+            st.session_state["my_shipment_ids"].append(shipment_id)
             st.success(
                 f"예약이 확정되었습니다. 화물ID **{shipment_id}** — "
+                f"탄소 마일리지 **{mileage_earned:,}P**가 적립되었습니다. "
                 "왼쪽 메뉴의 '화주용 실시간추적'에서 진행 상황을 확인하세요."
             )
     elif st.session_state.get("show_comparison"):
