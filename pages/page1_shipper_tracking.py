@@ -11,8 +11,10 @@ page0_home.py에서 "철도 통합운송"으로 예약 확정한 화물만 여�
 
 import streamlit as st
 
+import delay_risk
 import shared_store
-from gemini_assist import assess_delay_risk
+from gemini_assist import explain_delay_risk
+from rail_freight_nodes import FREIGHT_NODES
 from tz_utils import now_kst_naive
 
 st.title("📦 화주용 실시간추적")
@@ -64,29 +66,50 @@ c4.metric("현재 단계", f"{stage_idx + 1}/{len(shared_store.STAGE_LABELS)}", 
 st.divider()
 st.subheader("🤖 AI 지연위험도")
 st.caption(
-    "⚠️ 실제 지연 이력 데이터가 없어 학습된 예측 모델이 아닙니다. 아래 신호를 "
-    "근거로 Gemini가 정성적으로 평가한 등급이며, 호출마다 표현이 달라질 수 있어 참고용입니다."
+    "⚠️ 실제 개별 열차 취소 이력이 아니라, 실측 요일별 운휴율 통계(2026 화물열차운행계획)를 "
+    "근거로 만든 합성 데이터로 학습한 LightGBM 모델의 예측 확률입니다(테스트 AUC 0.631). "
+    "이 앱에는 '공차회송여부'(모델의 최상위 중요 변수) 정보가 없어 항상 '아니오'로 간주하므로, "
+    "실제보다 낮게 나올 수 있습니다."
 )
+
+_NODE_LAT = {n.name: n.lat for n in FREIGHT_NODES}
+_origin_lat = _NODE_LAT.get(record.get("출발화물역"))
+_dest_lat = _NODE_LAT.get(record.get("도착화물역"))
+_direction = "하" if (_origin_lat is not None and _dest_lat is not None and _origin_lat > _dest_lat) else "상"
+t_start = record.get("희망출발시각")
 
 
 @st.cache_data(show_spinner=False)
-def _cached_delay_risk(signals_key: str, signals: dict) -> dict:
-    return assess_delay_risk(signals)
+def _cached_delay_risk(shipment_id: str, distance_km: float, weight_ton: float,
+                        departure_dt, consolidated: bool, direction: str,
+                        origin_node: str, dest_node: str) -> dict:
+    return delay_risk.predict_delay_risk(
+        origin_node_name=origin_node,
+        dest_node_name=dest_node,
+        distance_km=distance_km,
+        weight_ton=weight_ton,
+        departure_dt=departure_dt,
+        consolidated=consolidated,
+        direction=direction,
+    )
 
 
-t_start = record.get("희망출발시각")
-signals = {
-    "시각표출처": record.get("시각표출처"),
-    "결합배송여부": bool(record.get("결합화주ID목록")),
-    "출발요일": t_start.strftime("%A") if t_start else None,
-    "구간": f"{record.get('출발화물역', '-')}→{record.get('도착화물역', '-')}",
-}
-try:
-    risk = _cached_delay_risk(record["화물ID"], signals)
-    risk_icon = {"낮음": "🟢", "보통": "🟡", "높음": "🔴"}.get(risk.get("level"), "⚪")
-    st.info(f"{risk_icon} **{risk.get('level', '판정불가')}** — {risk.get('reason', '-')}")
-except Exception:
-    st.caption("AI 위험도 평가를 생성하지 못했습니다 (Gemini API 키 확인 필요).")
+rail_km = record.get("철도구간거리km")
+if rail_km is not None and t_start is not None:
+    result = _cached_delay_risk(
+        record["화물ID"], rail_km, record.get("중량톤", 0.0), t_start,
+        bool(record.get("결합화주ID목록")), _direction,
+        record.get("출발화물역", ""), record.get("도착화물역", ""),
+    )
+    risk_icon = {"낮음": "🟢", "보통": "🟡", "높음": "🔴"}.get(result["level"], "⚪")
+    st.metric("예측 지연위험 확률", f"{result['probability']*100:.1f}%", result["level"])
+    try:
+        reason = explain_delay_risk(result["probability"], result["level"], result["signals"])
+        st.info(f"{risk_icon} {reason}")
+    except Exception:
+        st.info(f"{risk_icon} **{result['level']}** (Gemini 설명 생성 실패 — API 키 확인 필요, 확률 수치 자체는 로컬 모델 결과입니다)")
+else:
+    st.caption("지연위험도를 계산할 철도 구간 정보가 부족합니다.")
 
 st.divider()
 st.subheader("진행 경로")
