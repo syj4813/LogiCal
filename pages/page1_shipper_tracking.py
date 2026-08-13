@@ -29,8 +29,31 @@ try:
 except Exception:
     weather.AUTH_KEY = ""
 
-st.title("📦 화주용 실시간추적")
-st.caption("예약 확정된 화물의 door-to-door 진행 상황을 확인합니다.")
+st.markdown(
+    """
+    <style>
+    .fx-hero {
+        padding: 22px 24px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #0F6E4F 0%, #14895F 100%);
+        color: white;
+        margin-bottom: 18px;
+    }
+    .fx-hero h2 { margin: 0; color: white; }
+    .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown(
+    """
+    <div class="fx-hero">
+      <h2>📦 화주용 실시간추적</h2>
+      <p>예약 확정된 화물의 door-to-door 진행 상황을 확인합니다.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if st.button("🔄 새로고침"):
     st.rerun()
