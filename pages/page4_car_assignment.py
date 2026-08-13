@@ -35,6 +35,29 @@ st.markdown(
     }
     .fx-hero h2 { margin: 0; color: white; }
     .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
+    .fx-rank-card {
+        background: #FFFFFF;
+        border: 1px solid #E3E9E6;
+        border-radius: 14px;
+        padding: 20px 24px;
+        box-shadow: 0 2px 10px rgba(15, 110, 79, 0.06);
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        margin-bottom: 10px;
+    }
+    .fx-rank-card.fx-rank-1 { border: 1.5px solid #0F6E4F; box-shadow: 0 4px 16px rgba(15, 110, 79, 0.15); }
+    .fx-rank-badge { font-size: 0.95rem; color: #5A6B63; white-space: nowrap; }
+    .fx-rank-score { font-size: 2.1rem; font-weight: 800; color: #0F6E4F; line-height: 1; margin-top: 2px; }
+    .fx-rank-detail { flex: 1; }
+    .fx-rank-carno { font-size: 1.15rem; font-weight: 700; }
+    .fx-rank-sub { color: #5A6B63; font-size: 0.9rem; margin-top: 4px; }
+    .fx-status-pill {
+        display: inline-block; padding: 6px 14px; border-radius: 999px;
+        font-weight: 700; font-size: 0.95rem; white-space: nowrap;
+    }
+    .fx-status-ok { background: #E4F5EA; color: #0F6E4F; }
+    .fx-status-bad { background: #FBE7E4; color: #B0392F; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -43,9 +66,17 @@ st.markdown(
     """
     <div class="fx-hero">
       <h2>🚃 화차 배치 추천</h2>
+      <p>지도학습 회귀 모델(LightGBM, 150개 트리, 테스트 R²=0.970)이 화물에 맞는 화차를 예측·추천합니다.</p>
     </div>
     """,
     unsafe_allow_html=True,
+)
+st.warning(
+    "⚠️ 예측 모델 자체는 실제 학습된 AI 모델(그래디언트 부스팅)이지만, 학습 라벨은 코레일 "
+    "실제 배치 규정이 아닌 제공된 합성 데이터 기준입니다. 화차 편성도 실제 편성 데이터가 없어 "
+    "열차번호 기반으로 결정론적으로 생성한 mock이고, 화물 규격도 중량·화물종류 기반 추정치입니다. "
+    "참고용으로만 활용하세요.",
+    icon="⚠️",
 )
 
 if st.button("🔄 새로고침"):
@@ -145,33 +176,41 @@ if recommendations.empty:
     st.error("이 편성에는 조건에 맞는 화차가 없습니다(탱크차가 없는 편성입니다) — 화차 수를 늘리거나 다른 열차가 필요합니다.")
     st.stop()
 
-# 추천 카드 자체를 클릭하면 즉시 해당 화차로 배정합니다.
-# 별도의 화차 선택 드롭다운/확정 버튼을 없애 클릭 단계를 줄였습니다.
-st.caption("원하는 추천 화차 카드를 클릭하면 바로 배정됩니다.")
-
+# 추천 카드마다 큼직한 순위/점수와 상태를 보여주고, 바로 아래 전용
+# 버튼으로 배정합니다 (카드 자체는 st.markdown이라 배지·색상 등을
+# 자유롭게 꾸밀 수 있고, 배정 동작은 별도 st.button이 담당).
 for rank, row in recommendations.reset_index(drop=True).iterrows():
     remaining_kg = row["최대적재_kg"] - row["현재적재_kg"]
     assignable = row["적재가능여부"] != "❌ 초과"
 
     if not assignable:
-        status_text = "❌ 적재 초과"
+        status_html = '<span class="fx-status-pill fx-status-bad">❌ 적재 초과</span>'
     elif liquid_or_gas and row["위험물차와_거리"] == 0:
-        status_text = "✅ 위험물차 본인"
+        status_html = '<span class="fx-status-pill fx-status-ok">✅ 위험물차 본인</span>'
     else:
-        status_text = "✅ 적재 가능"
+        status_html = '<span class="fx-status-pill fx-status-ok">✅ 적재 가능</span>'
 
-    # st.button 전체 영역이 클릭 가능한 추천 카드 역할을 합니다.
-    card_label = (
-        f"**{rank + 1}위  ·  {row['적합도_점수'] * 100:.1f}점**\n\n"
-        f"**{row['화차번호']}** · {row['화차종류']} · {row['위치']}\n\n"
-        f"잔여적재 {remaining_kg:,.0f}kg / 잔여용적 {row['잔여용적_m3']}m³ · "
-        f"위험물차와 {row['위험물차와_거리']}칸   |   {status_text}"
+    card_class = "fx-rank-card fx-rank-1" if rank == 0 else "fx-rank-card"
+    st.markdown(
+        f"""
+        <div class="{card_class}">
+          <div style="text-align:center; min-width:76px;">
+            <div class="fx-rank-badge">{rank + 1}위</div>
+            <div class="fx-rank-score">{row['적합도_점수'] * 100:.1f}점</div>
+          </div>
+          <div class="fx-rank-detail">
+            <div class="fx-rank-carno">{row['화차번호']} · {row['화차종류']} · {row['위치']}</div>
+            <div class="fx-rank-sub">잔여적재 {remaining_kg:,.0f}kg / 잔여용적 {row['잔여용적_m3']}m³ · 위험물차와 {row['위험물차와_거리']}칸</div>
+          </div>
+          {status_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
     if st.button(
-        card_label,
+        f"✅ {row['화차번호']} 화차로 배정",
         key=f"assign_card_{selected_id}_{row['화차번호']}",
-        use_container_width=True,
+        width="stretch",
         disabled=not assignable,
     ):
         shared_store.assign_car(selected_id, row["화차번호"])
@@ -179,6 +218,7 @@ for rank, row in recommendations.reset_index(drop=True).iterrows():
             f"{selected_id} → {row['화차번호']} 화차"
         )
         st.rerun()
+    st.write("")
 
 st.divider()
 st.caption(
