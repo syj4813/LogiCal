@@ -79,6 +79,7 @@ total_count = len(shipments)
 grouped_count = sum(1 for s in shipments if s.get("결합화주ID목록"))
 assigned_count = sum(1 for s in shipments if s.get("화차배정") is not None)
 total_gwp_savings = sum(float(s.get("GWP절감(kgCO2eq대비트럭)") or 0) for s in shipments)
+total_mileage = sum(int(s.get("탄소마일리지") or 0) for s in shipments)
 
 lead_times_min = []
 for s in shipments:
@@ -99,12 +100,16 @@ in_transit_count = sum(
 )
 
 # ── KPI ─────────────────────────────────────────────────────
-k1, k2, k3, k4, k5 = st.columns(5)
+# ⚠️ 탄소절감량(kgCO2eq)과 발행 탄소마일리지(P)를 같이 보여준다 — 전자는
+# ESG/탄소중립 실적 보고용, 후자는 화주에게 지급해야 할 마일리지 부채
+# 규모를 파악하는 운영 지표라 목적이 달라서 하나로 통합하지 않는다.
+k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("전체 예약", f"{total_count}건")
 k2.metric("운송 진행 중", f"{in_transit_count}건")
 k3.metric("결합 배송", f"{grouped_count}건", f"{grouped_count / total_count * 100:.1f}%")
 k4.metric("화차 배정 완료", f"{assigned_count}건", f"{assigned_count / total_count * 100:.1f}%")
 k5.metric("탄소절감 합계", f"{total_gwp_savings:,.1f} kgCO₂eq")
+k6.metric("🪙 발행 탄소마일리지", f"{total_mileage:,}P")
 
 if avg_lead_time is not None:
     st.caption(f"평균 door-to-door 리드타임: {avg_lead_time:.0f}분")
@@ -136,15 +141,20 @@ if station_counts:
     rows_html = ""
     for station, count in sorted(station_counts.items(), key=lambda x: x[1], reverse=True):
         pct = round(count / max_count * 100)
-        rows_html += f"""
-        <div class="fx-station-row">
-          <div style="flex: 1;">
-            <div>{station}</div>
-            <div class="fx-station-bar"><div class="fx-station-bar-fill" style="width:{pct}%;"></div></div>
-          </div>
-          <div style="margin-left: 16px; font-weight: 600;">{count}건</div>
-        </div>
-        """
+        # ⚠️ 줄바꿈/들여쓰기가 섞인 멀티라인 f-string을 그대로 이어붙이면,
+        # 블록 사이에 빈 줄이 생겨서 Streamlit(commonmark) 마크다운 파서가
+        # 첫 블록만 raw HTML로 인식하고 그 뒤부터는 일반 텍스트로 취급해
+        # HTML 소스가 화면에 그대로 노출되는 문제가 있었다(실제 확인됨).
+        # 한 줄짜리 문자열로 이어붙여서 빈 줄이 안 생기게 한다.
+        rows_html += (
+            '<div class="fx-station-row">'
+            '<div style="flex: 1;">'
+            f'<div>{station}</div>'
+            f'<div class="fx-station-bar"><div class="fx-station-bar-fill" style="width:{pct}%;"></div></div>'
+            '</div>'
+            f'<div style="margin-left: 16px; font-weight: 600;">{count}건</div>'
+            '</div>'
+        )
     st.markdown(f'<div class="fx-card">{rows_html}</div>', unsafe_allow_html=True)
 else:
     st.info("집계할 화물역 정보가 없습니다.")
