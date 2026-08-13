@@ -73,10 +73,8 @@ c4.metric("현재 단계", f"{stage_idx + 1}/{len(shared_store.STAGE_LABELS)}", 
 st.divider()
 st.subheader("🤖 AI 지연위험도")
 st.caption(
-    "⚠️ 실제 개별 열차 취소 이력이 아니라, 실측 요일별 운휴율 통계(2026 화물열차운행계획)를 "
-    "근거로 만든 합성 데이터로 학습한 LightGBM 모델의 예측 확률입니다(테스트 AUC 0.631). "
-    "이 앱에는 '공차회송여부'(모델의 최상위 중요 변수) 정보가 없어 항상 '아니오'로 간주하므로, "
-    "실제보다 낮게 나올 수 있습니다."
+    "⚠️ 과거 운행 통계를 바탕으로 AI가 계산한 참고용 예측이며, 실제 지연 여부와는 "
+    "다를 수 있습니다. 확정된 정보가 아니라 배송 계획을 세우실 때 참고하시라는 취지예요."
 )
 
 _NODE_COORDS = {n.name: (n.lat, n.lng) for n in FREIGHT_NODES}
@@ -125,7 +123,7 @@ if rail_km is not None and t_start is not None:
             reason = explain_delay_risk(result["probability"], result["level"], result["signals"])
             st.info(f"{risk_icon} {reason}")
         except Exception:
-            st.info(f"{risk_icon} **{result['level']}** (Gemini 설명 생성 실패 — API 키 확인 필요, 확률 수치 자체는 로컬 모델 결과입니다)")
+            st.info(f"{risk_icon} **{result['level']}** (설명을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요 — 위 예측 확률·등급 자체는 정상적으로 계산된 값입니다.)")
 else:
     st.caption("지연위험도를 계산할 철도 구간 정보가 부족합니다.")
 
@@ -161,10 +159,10 @@ if all(origin_latlng) and all(dest_latlng) and _origin_node_latlng and _dest_nod
         last_mile_path=last_mile_path,
         show_truck_line=False,
     )
-    st.caption("🟢 첫/막판마일(트럭) · 🔵 철도 구간(역-역 직선 근사)")
+    st.caption("🟢 트럭 이동 구간 · 🔵 철도 이동 구간(실제 선로 모양과는 다소 다를 수 있어요)")
     st.pydeck_chart(deck)
 else:
-    st.caption("이 예약 건은 좌표 정보가 없어 이동경로 지도를 표시할 수 없습니다.")
+    st.caption("이 예약 건은 주소 정보가 부족해 이동경로 지도를 표시할 수 없습니다.")
 
 st.divider()
 st.subheader("예약 상세")
@@ -192,6 +190,6 @@ if gwp_savings is not None or mileage is not None:
         m2.metric("🪙 이 화물로 적립된 탄소 마일리지", f"{mileage:,}P")
 
 st.caption(
-    "※ 진행 단계는 실제 GPS/RFID 트래킹이 아니라, 실제 열차시각표(가능한 경우) 또는 "
-    "예약시각~도착예정시각 경과 비율로 추정한 시뮬레이션입니다."
+    "※ 현재 진행 단계는 실시간 위치 추적이 아니라, 열차 시간표(가능한 경우)나 "
+    "예상 소요시간을 바탕으로 자동 계산된 값입니다."
 )
