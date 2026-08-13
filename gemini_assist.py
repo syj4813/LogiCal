@@ -69,6 +69,12 @@ def parse_free_text_order(text: str) -> dict:
 날짜(YYYY-MM-DD)로 계산하고, "최대한 빨리"/"지금 바로" 같은 표현은
 지금 시각을 desired_time으로 사용하세요.
 
+"오전"/"아침"처럼 구체적 시:분 없이 시간대만 언급된 경우, null로 두지
+말고 그 시간대의 대표 시각으로 desired_time을 채우세요(오전·아침→09:00,
+점심·정오→12:00, 오후→14:00, 저녁→18:00, 밤→20:00, 새벽→05:00). 이때는
+desired_time을 unset_optional_fields에 넣지 마세요 — 문장이 시간대를
+언급했다는 사실 자체가 정보이지, 값이 없는 게 아닙니다.
+
 필드:
 - origin(출발지), destination(도착지): 필수. 문장에 없으면 null
 - cargo_type(화물종류): 선택, 없으면 null
