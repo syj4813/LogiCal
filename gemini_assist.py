@@ -19,6 +19,7 @@ Google Cloud 무료 크레딧을 그대로 소진할 수 있음.
 import json
 
 from google import genai
+from google.genai import types
 
 from tz_utils import now_kst
 
@@ -174,3 +175,72 @@ def explain_match(score: float, factors: dict) -> str:
 
 문장만 출력하세요."""
     return _call_gemini(prompt)
+
+
+def explain_delay_risk(probability: float, level: str, signals: dict) -> str:
+    """delay_risk.py가 계산한 실제 지연위험 확률(LightGBM)을 화주에게 보여줄
+    한 문장으로 설명.
+
+    ⚠️ 확률/등급 자체는 이미 delay_risk.py의 학습된 모델이 계산한 값이고,
+    Gemini는 그 수치와 근거 신호(요일/품목/결합배송여부 등)를 문장으로
+    풀어 설명하는 역할만 한다 — 다른 숫자를 새로 만들어내지 않는다
+    (계산은 코드/모델, 설명은 AI 원칙, explain_carbon_savings와 동일).
+    """
+    prompt = f"""아래는 화물열차 지연(운휴) 위험도를 학습된 모델이 예측한
+결과입니다. 화주에게 보여줄 한두 문장을 존댓말로 작성하세요. 주어진
+숫자와 신호 외의 다른 수치·원인을 새로 만들어내지 마세요.
+
+지연위험 확률: {probability * 100:.1f}%
+위험 등급: {level}
+근거 신호: {json.dumps(signals, ensure_ascii=False)}
+
+문장만 출력하세요."""
+    return _call_gemini(prompt)
+
+
+def start_chat(context: dict | None = None):
+    """화주 상담용 대화 세션을 새로 시작한다.
+
+    context: 현재 화면에 표시된 견적 결과(요금/시간/탄소배출량 등)를
+    담은 dict. 넘기면 챗봇이 그 숫자 범위 안에서만 답하도록 시스템
+    프롬프트에 그대로 박아넣는다. None이면 "아직 견적을 조회하지
+    않았다"고 안내하는 챗봇으로 시작한다.
+
+    반환값(Chat 세션 객체)은 Streamlit이라면 st.session_state에 담아
+    재실행(rerun) 사이에도 유지해야 한다 — 매번 새로 만들면 대화
+    맥락이 끊긴다.
+    """
+    client = genai.Client(vertexai=True, api_key=GEMINI_API_KEY)
+
+    if context:
+        system_instruction = (
+            "당신은 코레일 화물 운송 견적 상담 챗봇입니다. 화주의 질문에 "
+            "존댓말로 간결하게 답하세요.\n\n"
+            "규칙:\n"
+            "1. 아래 '현재 견적 정보'에 있는 숫자만 근거로 답하세요. "
+            "여기 없는 숫자를 추측하거나 새로 계산해서 만들어내지 마세요.\n"
+            "2. 다른 구간·다른 화물의 요금처럼 이 정보에 없는 질문을 받으면, "
+            "모른다고 답하고 화면에서 직접 조회해보라고 안내하세요.\n"
+            "3. 화물 운송·철도·물류와 무관한 질문에는 정중히 답변을 "
+            "거절하고 주제를 안내하세요.\n\n"
+            f"현재 견적 정보:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
+        )
+    else:
+        system_instruction = (
+            "당신은 코레일 화물 운송 견적 상담 챗봇입니다. 화주의 질문에 "
+            "존댓말로 간결하게 답하세요. 아직 견적을 조회하지 않은 상태이니, "
+            "위 폼에서 출발지/도착지/화물정보를 입력하고 '비교하기'를 눌러 "
+            "견적을 먼저 조회해달라고 안내하세요. 화물 운송·철도·물류와 "
+            "무관한 질문에는 정중히 답변을 거절하세요."
+        )
+
+    return client.chats.create(
+        model=GEMINI_MODEL,
+        config=types.GenerateContentConfig(system_instruction=system_instruction),
+    )
+
+
+def send_chat_message(chat, message: str) -> str:
+    """진행 중인 대화 세션(start_chat이 반환한 객체)에 메시지를 보내고 답변을 받는다."""
+    response = chat.send_message(message)
+    return response.text
