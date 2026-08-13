@@ -17,7 +17,6 @@ from cargo import CargoCategory, classify_cargo_type, apply_surcharge, is_mode_r
 from consolidation import ShipperOrder, evaluate_consolidation
 from data.mock_pool import get_mock_pool
 from emission import (
-    CARBON_MILEAGE_PER_KG_CO2,
     TransportMode,
     calculate_carbon_mileage,
     calculate_emission,
@@ -185,7 +184,7 @@ with st.form("quote_form"):
             dest_lat_in = st.number_input("도착지 위도", value=35.1796, format="%.4f", disabled=not override_dest)
             dest_lng_in = st.number_input("도착지 경도", value=129.0756, format="%.4f", disabled=not override_dest)
 
-    submitted = st.form_submit_button("비교하기", type="primary", use_container_width=True)
+    submitted = st.form_submit_button("비교하기", type="primary", width="stretch")
 
 if submitted:
     st.session_state["show_comparison"] = True
@@ -279,7 +278,7 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
         if rail_available:
             gwp_savings_pct = (1 - im.total_gwp_kg_co2e / truck_emission["gwp_kg_co2e"]) * 100 if truck_emission["gwp_kg_co2e"] else 0
             tree_eq = calculate_tree_equivalent(truck_emission["gwp_kg_co2e"] - im.total_gwp_kg_co2e)
-            fare_diff_pct = (1 - im.total_fare_won / truck_fare) * 100 if truck_fare else 0
+            fare_diff_won = truck_fare - im.total_fare_won
             schedule_note = f"실제 열차시각표 반영 (열차번호 {im.train_no})" if im.schedule_source == "real" else "직행 열차 미매칭 → 평균속도 기준 추정"
 
             st.markdown(
@@ -287,7 +286,7 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
                 <div class="fx-card fx-best">
                   <span class="fx-badge">🌱 철도 통합운송 (추천)</span>
                   <div class="fx-metric-row"><span class="fx-metric-label">예상 요금</span>
-                    <span class="fx-metric-value">{im.total_fare_won:,.0f}원 ({'절감 ' + format(fare_diff_pct, '.0f') + '%' if fare_diff_pct > 0 else '트럭 대비 ' + format(-fare_diff_pct, '.0f') + '% 비쌈'})</span></div>
+                    <span class="fx-metric-value">{im.total_fare_won:,.0f}원 ({'절감 ' + format(fare_diff_won, ',.0f') + '원' if fare_diff_won > 0 else '트럭 대비 ' + format(-fare_diff_won, ',.0f') + '원 비쌈'})</span></div>
                   <div class="fx-metric-row"><span class="fx-metric-label">도착 예정</span>
                     <span class="fx-metric-value">{im.arrival_dt.strftime('%m/%d %H:%M')}</span></div>
                   <div class="fx-metric-row"><span class="fx-metric-label">총 소요 시간</span>
@@ -304,11 +303,16 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
             st.success(f"🌳 트럭 대비 절감된 탄소량은 나무 약 **{tree_eq:.1f}그루**가 1년간 흡수하는 양과 비슷합니다.")
             st.markdown(
                 f"""
-                <div style="background:#EAF6EF; border:1px dashed #0F6E4F; border-radius:10px;
-                            padding:12px 16px; margin-top:8px; font-size:0.92rem;">
-                  🪙 이 화물을 <b>철도 통합운송으로 예약 확정</b>하면 탄소 마일리지
-                  <b>{mileage_preview:,}P</b>가 적립됩니다 (절감 {gwp_savings_kg:.1f}kgCO2eq ×
-                  {CARBON_MILEAGE_PER_KG_CO2}P/kg — ⚠️ 대회 시연용 임의 전환계수).
+                <div style="background:linear-gradient(135deg, #FFF7E0 0%, #FFEFC2 100%);
+                            border:2px solid #E8A800; border-radius:12px;
+                            padding:16px 20px; margin-top:10px;
+                            display:flex; align-items:center; justify-content:space-between;">
+                  <div style="font-size:1rem; color:#5A4600;">
+                    🪙 <b>철도 통합운송으로 예약 확정</b> 시 적립되는 탄소 마일리지
+                  </div>
+                  <div style="font-size:1.6rem; font-weight:800; color:#C98A00;">
+                    +{mileage_preview:,}P
+                  </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
