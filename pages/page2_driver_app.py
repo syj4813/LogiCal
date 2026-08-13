@@ -92,7 +92,6 @@ k2.metric("도착 예정 화물", f"{len(arriving)}건")
 k3.metric("복귀 화물 후보", f"{len(return_candidates)}건")
 k4.metric("다음 도착", next_eta.strftime("%H:%M") if next_eta else "-")
 
-st.caption("현재 위치는 데모용 기사-화물역 매핑입니다. 실제 운영에서는 GPS/로그인 정보로 대체합니다.")
 st.divider()
 
 if not shipments:
@@ -186,7 +185,6 @@ for rank, (s, score, revenue) in enumerate(scored, start=1):
             st.caption("공차 방지 적합" if score >= 75 else "검토 필요")
         with c3:
             st.metric("예상 수익", f"{revenue:,}원" if revenue is not None else "-")
-            st.caption("드레이지 운임 함수 기준")
 
         factors = {
             "중량톤": s.get("중량톤"),
@@ -199,8 +197,3 @@ for rank, (s, score, revenue) in enumerate(scored, start=1):
                 st.info(f"🤖 {narrative}")
             except Exception:
                 st.caption("AI 설명을 불러오지 못했습니다. 위 적합도와 운임 정보를 참고해 주세요.")
-
-st.caption(
-    "※ 매칭 적합도는 중량과 결합배송 여부를 이용한 규칙 기반 점수이며, "
-    "예상 수익은 road_cost.estimate_drayage_fare() 결과입니다."
-)
