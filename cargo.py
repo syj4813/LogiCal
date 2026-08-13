@@ -80,3 +80,35 @@ def apply_surcharge(base_fare: int, category: CargoCategory) -> int:
 
 def is_mode_restricted(category: CargoCategory, mode_label: str) -> bool:
     return mode_label in RESTRICTED_MODES.get(category, set())
+
+
+# ── 화물 규격(길이/폭/높이) 추정 — 화주 폼에서 치수를 직접 안 받기 때문에,
+#    중량과 화물종류(카테고리)만으로 화차배치 화면에 쓸 규격을 근사한다.
+#
+# 방식: 중량 ÷ 카테고리별 평균 밀도로 부피를 구하고, 직육면체 종횡비를
+# 고정(길이:폭:높이 ≈ 1.5:1:0.9 — 일반적인 화물 상자/크레이트 비율)해서
+# 세 변을 한꺼번에 역산한다. 이 앱이 다루는 화물은 500kg~수십 톤 범위라
+# 파렛트 1개짜리 footprint를 고정하면(예: 120×100cm) 무거운 화물에서
+# 높이가 비현실적으로 계속 치솟는 문제가 있어, 세 변이 함께 커지는 방식을
+# 쓴다. ⚠️ 전부 추정치입니다. 실제 화물 규격 데이터로 교체가 필요합니다.
+CARGO_DENSITY_KG_PER_M3: dict[CargoCategory, float] = {
+    CargoCategory.GENERAL: 200.0,
+    CargoCategory.REFRIGERATED: 150.0,       # 보냉 포장재로 부피 대비 가벼움
+    CargoCategory.HAZARDOUS: 400.0,          # 드럼통 등 밀도 높은 포장
+    CargoCategory.FRAGILE_HIGH_VALUE: 100.0,  # 완충재 때문에 부피 대비 가장 가벼움
+    CargoCategory.PERISHABLE: 250.0,         # 크레이트(상자) 포장
+}
+
+# 길이:폭:높이 종횡비 (일반적인 화물 상자/크레이트 비율 근사)
+_DIM_RATIO = (1.5, 1.0, 0.9)
+_MIN_DIM_CM, _MAX_DIM_CM = 40.0, 1200.0  # 화차 규격을 크게 벗어나지 않도록 하한/상한
+
+
+def estimate_dims_cm(weight_kg: float, category: CargoCategory) -> tuple[float, float, float]:
+    """중량+화물종류만으로 (길이, 폭, 높이) cm 추정 — 종횡비 고정, 부피 기반 역산."""
+    density = CARGO_DENSITY_KG_PER_M3[category]
+    volume_m3 = max(weight_kg, 1.0) / density
+    rl, rw, rh = _DIM_RATIO
+    unit_cm = (volume_m3 * 1_000_000 / (rl * rw * rh)) ** (1 / 3)
+    dims = tuple(min(max(unit_cm * r, _MIN_DIM_CM), _MAX_DIM_CM) for r in _DIM_RATIO)
+    return tuple(round(d, 1) for d in dims)
