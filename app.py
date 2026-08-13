@@ -12,6 +12,18 @@ import streamlit as st
 
 st.set_page_config(page_title="RailLTL", page_icon="🚆", layout="wide")
 
+with st.sidebar:
+    st.markdown(
+        """
+        <div style="padding: 4px 0 14px 0;">
+          <span style="font-size:1.4rem; font-weight:800; color:#0F6E4F;">🚆 RailLTL</span><br/>
+          <span style="font-size:0.8rem; color:#5A6B63;">AI 기반 철도 결합 운송 플랫폼</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
 pages = {
     "화주용": [
         st.Page("pages/page0_home.py", title="견적 비교", icon="🚚", default=True),
@@ -23,7 +35,7 @@ pages = {
     "코레일용": [
         st.Page("pages/page3_control_tower.py", title="관제센터", icon="🛰️"),
         st.Page("pages/page4_car_assignment.py", title="화차 배치 추천", icon="🚃"),
-    ],
+    ]
 }
 
 nav = st.navigation(pages)
