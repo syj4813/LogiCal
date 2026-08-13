@@ -14,6 +14,7 @@ st.set_page_config(page_title="철도 화물 통합운송 비교", page_icon="�
 
 pages = [
     st.Page("pages/page0_home.py", title="화주 견적 비교", icon="🚚", default=True),
+    st.Page("pages/page1_shipper_tracking.py", title="화주용 실시간추적", icon="📦"),
 ]
 
 nav = st.navigation(pages)
