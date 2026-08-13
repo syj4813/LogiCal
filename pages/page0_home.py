@@ -235,8 +235,6 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
 
     # ── 트럭 단독 ──
     direct = road_cost.get_road_distance_duration(r["origin_lng"], r["origin_lat"], r["dest_lng"], r["dest_lat"])
-    if direct.get("source") == "estimated":
-        st.caption("⚠️ 지도 API 키 미설정 — 거리/시간은 직선거리 기반 추정치입니다.")
     truck_fare = apply_surcharge(
         road_cost.estimate_truck_fare(direct["distance_km"], weight_ton), category
     )
@@ -344,7 +342,7 @@ if st.session_state.get("show_comparison") and "result" in st.session_state:
             first_mile_path=im.first_mile_path,
             last_mile_path=im.last_mile_path,
         )
-        st.caption("🟠 트럭 직송 · 🟢 첫/막판마일(트럭) · 🔵 철도 구간(역-역 직선 근사)")
+        st.caption("🟠 트럭 직송 · 🟢 첫/막판마일(트럭) · 🔵 철도 구간")
     else:
         deck = map_view.build_route_map(
             origin_lat=r["origin_lat"], origin_lng=r["origin_lng"],
