@@ -15,6 +15,7 @@ import delay_risk
 import map_view
 import road_cost
 import shared_store
+import weather
 from gemini_assist import explain_delay_risk
 from rail_freight_nodes import FREIGHT_NODES
 from tz_utils import now_kst_naive
@@ -23,6 +24,10 @@ try:
     road_cost.KAKAO_REST_API_KEY = st.secrets.get("KAKAO_REST_API_KEY", "")
 except Exception:
     road_cost.KAKAO_REST_API_KEY = ""
+try:
+    weather.AUTH_KEY = st.secrets.get("KMA_AUTH_KEY", "")
+except Exception:
+    weather.AUTH_KEY = ""
 
 st.title("📦 화주용 실시간추적")
 st.caption("예약 확정된 화물의 door-to-door 진행 상황을 확인합니다.")
@@ -120,7 +125,15 @@ if rail_km is not None and t_start is not None:
             # 시)/결합배송/공차회송/중량/거리 등 정성 신호를 빠짐없이
             # 한두 문장에 자동으로 녹여서 설명하도록 요청한다 — 사용자가
             # 따로 체크하거나 입력할 건 없다.
-            reason = explain_delay_risk(result["probability"], result["level"], result["signals"])
+            # 기상청 API(weather.py) 조회 결과도 있으면 같이 넘긴다 — 다만
+            # delay_risk 모델의 확률 계산 자체에는 반영되지 않는 순수 참고
+            # 정보라, 조회 실패해도(키 미설정 등) 위험도 설명 자체는 그대로
+            # 나오도록 별도 try로 감싼다.
+            try:
+                weather_summary = weather.get_weather_summary(record.get("출발화물역", ""), t_start)
+            except Exception:
+                weather_summary = None
+            reason = explain_delay_risk(result["probability"], result["level"], result["signals"], weather_summary)
             st.info(f"{risk_icon} {reason}")
         except Exception:
             st.info(f"{risk_icon} **{result['level']}** (설명을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요 — 위 예측 확률·등급 자체는 정상적으로 계산된 값입니다.)")
