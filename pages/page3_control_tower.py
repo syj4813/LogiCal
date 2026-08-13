@@ -213,8 +213,3 @@ if rows:
     st.dataframe(df, width="stretch", hide_index=True)
 else:
     st.info("현재 필터 조건에 맞는 화물이 없습니다.")
-
-st.caption(
-    "※ 이 대시보드는 shared_store에 실제 등록된 예약 데이터를 집계합니다. "
-    "현재 단계는 실제 GPS/RFID가 아니라 예약/철도 시각표를 기준으로 계산됩니다."
-)
