@@ -17,15 +17,32 @@ from tz_utils import now_kst_naive
 st.markdown(
     """
     <style>
-    .tower-hero {
+    .fx-hero {
         padding: 22px 24px;
         border-radius: 16px;
-        background: linear-gradient(135deg, #202a44 0%, #384c73 100%);
+        background: linear-gradient(135deg, #0F6E4F 0%, #14895F 100%);
         color: white;
         margin-bottom: 18px;
     }
-    .tower-hero h2 { margin: 0; color: white; }
-    .tower-hero p { margin: 6px 0 0 0; opacity: .9; }
+    .fx-hero h2 { margin: 0; color: white; }
+    .fx-hero p { margin: 6px 0 0 0; opacity: .9; }
+    .fx-card {
+        background: #FFFFFF;
+        border: 1px solid #E3E9E6;
+        border-radius: 14px;
+        padding: 8px 20px;
+        box-shadow: 0 2px 10px rgba(15, 110, 79, 0.06);
+    }
+    .fx-station-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 4px; border-bottom: 1px solid #E3E9E6; font-size: 0.95rem;
+    }
+    .fx-station-row:last-child { border-bottom: none; }
+    .fx-station-bar {
+        background: #EAF6EF; border-radius: 6px; height: 8px; margin-top: 6px;
+        overflow: hidden;
+    }
+    .fx-station-bar-fill { background: #0F6E4F; height: 100%; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -33,7 +50,7 @@ st.markdown(
 
 st.markdown(
     """
-    <div class="tower-hero">
+    <div class="fx-hero">
       <h2>🛰️ 관제센터 대시보드</h2>
       <p>전체 예약 · 운송 단계 · 화물역 집중도 · 개별 화물 현황</p>
     </div>
@@ -45,7 +62,7 @@ head1, head2 = st.columns([5, 1])
 with head1:
     st.caption(f"조회 시각: {now_kst_naive().strftime('%Y-%m-%d %H:%M:%S')}")
 with head2:
-    if st.button("🔄 새로고침", use_container_width=True):
+    if st.button("🔄 새로고침", width="stretch"):
         st.rerun()
 
 shipments = shared_store.read_shipments()
@@ -97,14 +114,6 @@ st.divider()
 # ── 운송 단계 현황 ──────────────────────────────────────────
 st.subheader("🚦 현재 운송 단계")
 
-stage_df = pd.DataFrame(
-    {
-        "단계": shared_store.STAGE_LABELS,
-        "건수": [stage_counts.get(label, 0) for label in shared_store.STAGE_LABELS],
-    }
-).set_index("단계")
-st.bar_chart(stage_df, use_container_width=True)
-
 stage_cols = st.columns(4)
 for i, label in enumerate(shared_store.STAGE_LABELS):
     stage_cols[i % 4].metric(label, f"{stage_counts.get(label, 0)}건")
@@ -123,14 +132,20 @@ for s in shipments:
         station_counts[s["도착화물역"]] += 1
 
 if station_counts:
-    station_df = (
-        pd.DataFrame(
-            {"화물역": list(station_counts.keys()), "예약 건수": list(station_counts.values())}
-        )
-        .sort_values("예약 건수", ascending=False)
-        .set_index("화물역")
-    )
-    st.bar_chart(station_df, use_container_width=True)
+    max_count = max(station_counts.values())
+    rows_html = ""
+    for station, count in sorted(station_counts.items(), key=lambda x: x[1], reverse=True):
+        pct = round(count / max_count * 100)
+        rows_html += f"""
+        <div class="fx-station-row">
+          <div style="flex: 1;">
+            <div>{station}</div>
+            <div class="fx-station-bar"><div class="fx-station-bar-fill" style="width:{pct}%;"></div></div>
+          </div>
+          <div style="margin-left: 16px; font-weight: 600;">{count}건</div>
+        </div>
+        """
+    st.markdown(f'<div class="fx-card">{rows_html}</div>', unsafe_allow_html=True)
 else:
     st.info("집계할 화물역 정보가 없습니다.")
 
@@ -185,7 +200,7 @@ if rows:
     df = pd.DataFrame(rows)
     if "도착예정" in df.columns:
         df = df.sort_values("도착예정", ascending=True, na_position="last")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 else:
     st.info("현재 필터 조건에 맞는 화물이 없습니다.")
 
